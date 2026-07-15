@@ -5,6 +5,9 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-latest
@@ -19,9 +22,7 @@ jobs:
         run: npm ci
 
       - name: Build DMG & ZIP
-        run: npm run build
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --mac dmg zip --publish never
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
