@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+h1 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #5eead4;
+  margin-bottom: 8px;
+}
+p.subtitle {
+  font-size: 13px;
+  color: #94a3b8;
+  margin-bottom: 24px;
+}
+label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #cbd5e1;
+  display: block;
+  margin-bottom: 6px;
+}
+input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #1e293b;
+  color: #e2e8f0;
+  font-size: 14px;
+  outline: none;
+  margin-bottom: 16px;
+  transition: border-color 0.2s;
+}
+input:focus {
+  border-color: #0d9488;
+}
+input::placeholder { color: #475569; }
+.spacer { flex: 1; }
+button {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  background: #0d9488;
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+button:hover { background: #0f766e; }
+button:disabled { background: #334155; cursor: not-allowed; }
+.error {
+  color: #f87171;
+  font-size: 12px;
+  margin-top: -8px;
+  margin-bottom: 12px;
+  display: none;
+}
+.hint {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: -12px;
+  margin-bottom: 16px;
+}
+</style>
+</head>
+<body>
+  <h1>Luna Pet</h1>
+  <p class="subtitle">Connect to your Zylos Dashboard to bring Luna to your desktop.</p>
+
+  <label>Dashboard URL</label>
+  <input type="text" id="url" placeholder="https://luna.jinglever.com" />
+
+  <label>API Key</label>
+  <input type="password" id="apiKey" placeholder="zylos_ak_..." />
+  <p class="hint">Generate one at Dashboard → Settings → API Keys</p>
+
+  <div class="error" id="error"></div>
+
+  <div class="spacer"></div>
+  <button id="connect" onclick="handleConnect()">Connect</button>
+
+<script>
+const { ipcRenderer } = require('electron');
+
+ipcRenderer.on('prefill', (_, data) => {
+  if (data.dashboardUrl) document.getElementById('url').value = data.dashboardUrl;
+  if (data.apiKey) document.getElementById('apiKey').value = data.apiKey;
+});
+
+async function handleConnect() {
+  const btn = document.getElementById('connect');
+  const errEl = document.getElementById('error');
+  const dashboardUrl = document.getElementById('url').value.trim().replace(/\/+$/, '');
+  const apiKey = document.getElementById('apiKey').value.trim();
+
+  if (!dashboardUrl || !apiKey) {
+    errEl.textContent = 'Both fields are required.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Connecting...';
+  errEl.style.display = 'none';
+
+  const result = await ipcRenderer.invoke('save-config', { dashboardUrl, apiKey });
+
+  if (!result.ok) {
+    errEl.textContent = `Connection failed: ${result.error}`;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Connect';
+  }
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') handleConnect();
+});
+</script>
+</body>
+</html>

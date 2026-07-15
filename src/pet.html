@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  user-select: none;
+  -webkit-app-region: drag;
+}
+
+.pet-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.pet {
+  width: 96px;
+  height: 96px;
+  position: relative;
+}
+
+.pet-body {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto;
+  position: relative;
+}
+
+/* Base orb body */
+.orb {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #5eead4, #0d9488 60%, #065f53);
+  position: absolute;
+  box-shadow: 0 4px 20px rgba(13, 148, 136, 0.4), inset 0 -4px 8px rgba(0,0,0,0.15);
+  transition: transform 0.3s ease, background 0.5s ease;
+}
+
+/* Eyes */
+.eye {
+  position: absolute;
+  width: 10px;
+  height: 12px;
+  background: #fff;
+  border-radius: 50%;
+  top: 30px;
+}
+.eye::after {
+  content: '';
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: #1a1a2e;
+  border-radius: 50%;
+  top: 3px;
+  left: 2px;
+  transition: all 0.2s;
+}
+.eye-left { left: 24px; }
+.eye-right { left: 46px; }
+
+/* Mouth */
+.mouth {
+  position: absolute;
+  width: 12px;
+  height: 6px;
+  border-bottom: 2px solid #1a1a2e;
+  border-radius: 0 0 50% 50%;
+  top: 48px;
+  left: 34px;
+  transition: all 0.3s;
+}
+
+/* Blush */
+.blush {
+  position: absolute;
+  width: 10px;
+  height: 6px;
+  background: rgba(251, 146, 160, 0.5);
+  border-radius: 50%;
+  top: 44px;
+}
+.blush-left { left: 14px; }
+.blush-right { left: 56px; }
+
+/* Antenna / ear thingy */
+.antenna {
+  position: absolute;
+  width: 4px;
+  height: 16px;
+  background: #14b8a6;
+  border-radius: 2px;
+  top: -12px;
+  left: 38px;
+  transform-origin: bottom center;
+}
+.antenna::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: #5eead4;
+  border-radius: 50%;
+  top: -6px;
+  left: -2px;
+  box-shadow: 0 0 6px rgba(94, 234, 212, 0.6);
+}
+
+/* Status label */
+.status-label {
+  font-family: -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+  font-size: 10px;
+  color: rgba(255,255,255,0.9);
+  background: rgba(13, 148, 136, 0.85);
+  padding: 2px 8px;
+  border-radius: 8px;
+  margin-top: 4px;
+  white-space: nowrap;
+  text-align: center;
+  backdrop-filter: blur(4px);
+  -webkit-app-region: no-drag;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* === STATE ANIMATIONS === */
+
+/* IDLE — gentle float */
+.state-idle .orb {
+  animation: float 3s ease-in-out infinite;
+}
+.state-idle .antenna {
+  animation: antenna-sway 2.5s ease-in-out infinite;
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+@keyframes antenna-sway {
+  0%, 100% { transform: rotate(-5deg); }
+  50% { transform: rotate(5deg); }
+}
+
+/* BUSY — energetic bounce + spinning antenna light */
+.state-busy .orb {
+  animation: bounce 0.6s ease-in-out infinite;
+  background: radial-gradient(circle at 35% 35%, #67e8f9, #0891b2 60%, #065053);
+}
+.state-busy .antenna {
+  animation: antenna-fast 0.4s ease-in-out infinite;
+}
+.state-busy .antenna::after {
+  animation: glow-pulse 0.8s ease-in-out infinite;
+  background: #67e8f9;
+}
+.state-busy .eye::after {
+  animation: eye-focus 1s ease-in-out infinite;
+}
+@keyframes bounce {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-8px) scale(1.02); }
+}
+@keyframes antenna-fast {
+  0%, 100% { transform: rotate(-8deg); }
+  50% { transform: rotate(8deg); }
+}
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 6px rgba(103, 232, 249, 0.6); }
+  50% { box-shadow: 0 0 14px rgba(103, 232, 249, 0.9); }
+}
+@keyframes eye-focus {
+  0%, 100% { width: 6px; height: 6px; }
+  50% { width: 5px; height: 7px; }
+}
+
+/* THINKING — slow pulse + half-closed eyes */
+.state-thinking .orb {
+  animation: think-pulse 2s ease-in-out infinite;
+  background: radial-gradient(circle at 35% 35%, #a78bfa, #7c3aed 60%, #4c1d95);
+}
+.state-thinking .eye {
+  height: 8px;
+}
+.state-thinking .eye::after {
+  top: 1px;
+  animation: look-around 3s ease-in-out infinite;
+}
+.state-thinking .antenna::after {
+  background: #a78bfa;
+  animation: glow-slow 2s ease-in-out infinite;
+}
+.state-thinking .mouth {
+  width: 8px;
+  height: 4px;
+  left: 36px;
+}
+@keyframes think-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+@keyframes look-around {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(2px); }
+  75% { transform: translateX(-2px); }
+}
+@keyframes glow-slow {
+  0%, 100% { box-shadow: 0 0 4px rgba(167, 139, 250, 0.4); }
+  50% { box-shadow: 0 0 12px rgba(167, 139, 250, 0.8); }
+}
+
+/* STUCK — wobble + distressed eyes */
+.state-stuck .orb {
+  animation: wobble 0.5s ease-in-out infinite;
+  background: radial-gradient(circle at 35% 35%, #fca5a5, #dc2626 60%, #7f1d1d);
+}
+.state-stuck .eye::after {
+  background: #dc2626;
+}
+.state-stuck .mouth {
+  border-bottom: none;
+  border-top: 2px solid #1a1a2e;
+  border-radius: 50% 50% 0 0;
+  top: 50px;
+}
+.state-stuck .antenna::after {
+  background: #fca5a5;
+  animation: blink-warn 0.8s step-end infinite;
+}
+.state-stuck .blush {
+  background: rgba(220, 38, 38, 0.3);
+}
+@keyframes wobble {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-4deg); }
+  75% { transform: rotate(4deg); }
+}
+@keyframes blink-warn {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0.3; }
+}
+
+/* OFFLINE — dimmed, sleeping */
+.state-offline .orb {
+  background: radial-gradient(circle at 35% 35%, #94a3b8, #64748b 60%, #334155);
+  box-shadow: 0 4px 12px rgba(100, 116, 139, 0.3);
+}
+.state-offline .eye {
+  height: 3px;
+  top: 36px;
+  border-radius: 50%;
+}
+.state-offline .eye::after { display: none; }
+.state-offline .mouth {
+  width: 16px;
+  left: 32px;
+  border-bottom-color: #475569;
+}
+.state-offline .antenna::after {
+  background: #94a3b8;
+  box-shadow: none;
+}
+.state-offline .pet-body {
+  animation: sleep-bob 4s ease-in-out infinite;
+}
+.state-offline .zzz {
+  display: block;
+}
+@keyframes sleep-bob {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(2px) rotate(-2deg); }
+}
+
+/* Zzz indicator */
+.zzz {
+  display: none;
+  position: absolute;
+  top: -8px;
+  right: 4px;
+  font-size: 14px;
+  animation: zzz-float 2s ease-in-out infinite;
+}
+@keyframes zzz-float {
+  0% { opacity: 0; transform: translateY(0) scale(0.8); }
+  50% { opacity: 1; transform: translateY(-8px) scale(1); }
+  100% { opacity: 0; transform: translateY(-16px) scale(0.8); }
+}
+
+/* WAITING — gentle bounce with question mark antenna */
+.state-waiting .orb {
+  animation: wait-bounce 1.5s ease-in-out infinite;
+  background: radial-gradient(circle at 35% 35%, #fde68a, #f59e0b 60%, #92400e);
+}
+.state-waiting .antenna::after {
+  background: #fde68a;
+  animation: glow-pulse 1.2s ease-in-out infinite;
+}
+.state-waiting .eye::after {
+  animation: blink 3s ease-in-out infinite;
+}
+@keyframes wait-bounce {
+  0%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-4px); }
+  60% { transform: translateY(0); }
+}
+@keyframes blink {
+  0%, 90%, 100% { height: 6px; }
+  95% { height: 1px; }
+}
+
+/* Context gauge ring */
+.context-ring {
+  position: absolute;
+  width: 88px;
+  height: 88px;
+  top: -4px;
+  left: -4px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  transition: border-color 0.5s;
+}
+.context-high .context-ring {
+  border-color: rgba(251, 146, 60, 0.6);
+  animation: ring-pulse 1.5s ease-in-out infinite;
+}
+.context-critical .context-ring {
+  border-color: rgba(239, 68, 68, 0.7);
+  animation: ring-pulse 0.8s ease-in-out infinite;
+}
+@keyframes ring-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+</style>
+</head>
+<body>
+<div class="pet-container">
+  <div class="pet state-idle" id="pet">
+    <div class="pet-body">
+      <div class="context-ring"></div>
+      <div class="orb">
+        <div class="eye eye-left"></div>
+        <div class="eye eye-right"></div>
+        <div class="blush blush-left"></div>
+        <div class="blush blush-right"></div>
+        <div class="mouth"></div>
+      </div>
+      <div class="antenna"></div>
+      <div class="zzz">💤</div>
+    </div>
+  </div>
+  <div class="status-label" id="status-label">Connecting...</div>
+</div>
+
+<script>
+const { ipcRenderer } = require('electron');
+
+let config = {};
+let abortController = null;
+let reconnectTimer = null;
+
+ipcRenderer.on('config', (_, cfg) => {
+  config = cfg;
+  connectSSE();
+});
+
+async function connectSSE() {
+  if (abortController) {
+    abortController.abort();
+    abortController = null;
+  }
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+
+  const url = `${config.dashboardUrl}/api/stream`;
+  const headers = {};
+  if (config.sessionToken) {
+    headers['Authorization'] = `Bearer ${config.sessionToken}`;
+  } else if (config.apiKey) {
+    headers['Authorization'] = `Bearer ${config.apiKey}`;
+  }
+
+  abortController = new AbortController();
+
+  try {
+    const response = await fetch(url, {
+      headers,
+      signal: abortController.signal,
+    });
+
+    if (!response.ok) {
+      if (response.status === 401 && config.apiKey) {
+        await refreshToken();
+        return connectSSE();
+      }
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    updateLabel('Connected ✓');
+    setTimeout(() => updateLabel('Luna'), 2000);
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+
+      let currentEvent = '';
+      let currentData = '';
+
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          currentEvent = line.slice(7).trim();
+        } else if (line.startsWith('data: ')) {
+          currentData = line.slice(6);
+        } else if (line === '' && currentData) {
+          handleSSEEvent(currentEvent, currentData);
+          currentEvent = '';
+          currentData = '';
+        }
+      }
+    }
+  } catch (err) {
+    if (err.name !== 'AbortError') {
+      updateLabel('Reconnecting...');
+      scheduleReconnect();
+    }
+  }
+}
+
+async function refreshToken() {
+  const { ipcRenderer } = require('electron');
+  const result = await ipcRenderer.invoke('save-config', {
+    dashboardUrl: config.dashboardUrl,
+    apiKey: config.apiKey,
+  });
+  if (result.ok) {
+    config.sessionToken = result.token;
+  }
+}
+
+function handleSSEEvent(event, data) {
+  try {
+    const parsed = JSON.parse(data);
+    if (event === 'fleet_state') {
+      if (parsed.self) updatePetState(parsed.self);
+      else updatePetState(parsed);
+    } else if (event === 'state_change') {
+      updatePetState(parsed);
+    }
+  } catch {}
+}
+
+function scheduleReconnect() {
+  if (!reconnectTimer) {
+    reconnectTimer = setTimeout(connectSSE, 5000);
+  }
+}
+
+function updatePetState(data) {
+  const pet = document.getElementById('pet');
+  const state = (data.state || 'UNKNOWN').toUpperCase();
+  const isThinking = state === 'BUSY' && (!data.running_tools || data.running_tools.length === 0);
+  const isWaiting = data.source?.pending_permission;
+
+  pet.className = 'pet';
+
+  if (state === 'OFFLINE') {
+    pet.classList.add('state-offline');
+    updateLabel('Sleeping...');
+  } else if (state === 'STUCK' || state === 'POSSIBLY_STUCK') {
+    pet.classList.add('state-stuck');
+    updateLabel(data.reason || 'Stuck');
+  } else if (isWaiting) {
+    pet.classList.add('state-waiting');
+    updateLabel('Waiting for you');
+  } else if (isThinking) {
+    pet.classList.add('state-thinking');
+    updateLabel(data.reason || 'Thinking...');
+  } else if (state === 'BUSY') {
+    pet.classList.add('state-busy');
+    const tool = data.running_tools?.[0];
+    if (tool) {
+      const detail = tool.tool_detail ? `: ${tool.tool_detail.slice(0, 20)}` : '';
+      updateLabel(`${tool.tool_name}${detail}`);
+    } else {
+      updateLabel('Working...');
+    }
+  } else {
+    pet.classList.add('state-idle');
+    updateLabel('Luna');
+  }
+
+  // Context gauge
+  const contextPct = data.context_pct || 0;
+  if (contextPct > 80) {
+    pet.classList.add('context-critical');
+  } else if (contextPct > 60) {
+    pet.classList.add('context-high');
+  }
+
+  // Subagent indicator
+  const subs = data.active_subagents?.length || 0;
+  if (subs > 0 && state === 'BUSY') {
+    updateLabel(`Working (${subs} helper${subs > 1 ? 's' : ''})`);
+  }
+}
+
+function updateLabel(text) {
+  document.getElementById('status-label').textContent = text;
+}
+
+// Drag support
+let isDragging = false;
+document.addEventListener('mousedown', () => { isDragging = true; });
+document.addEventListener('mouseup', () => { isDragging = false; });
+</script>
+</body>
+</html>
