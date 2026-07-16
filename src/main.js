@@ -8,7 +8,7 @@ const http = require('http');
 // would leave WebAudio suspended forever under Chromium's autoplay policy.
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
-const VERSION = 'v0.4.1';
+const VERSION = 'v0.5.0';
 const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
 const DEFAULT_PET = { visible: false, skin: 'octopus', customSkinDir: '', x: -1, y: -1 };
 const DEFAULT_CONFIG = {
@@ -39,6 +39,7 @@ let selfRich = null;            // latest detailed state payload (self agent onl
 let allHidden = false;
 let connected = false;
 const prevStateKeys = new Map(); // agent name -> last stateKey seen (visible pets only)
+const stateSince = new Map();    // agent name -> ts of last stateKey change (for the elapsed timer)
 const lastCueAt = new Map();     // cue name -> ts, global rate limit
 
 // ---------- config ----------
@@ -88,26 +89,55 @@ function petConfig(name) {
 
 // ---------- skins & sounds ----------
 
-function findSkinImage(dir, state) {
+function imageDataUrl(file, mime) {
+  return `data:${mime};base64,${fs.readFileSync(file).toString('base64')}`;
+}
+
+// A state resolves to a frame list: numbered sequence `<state>-1.ext ...`
+// (real frame-by-frame animation) wins over a single `<state>.ext`
+// (animated gif/webp in a single file also animates natively in <img>).
+function findStateFrames(dir, state) {
+  const frames = [];
+  for (let i = 1; i <= 120; i++) {
+    let found = null;
+    for (const [ext, mime] of Object.entries(SKIN_EXTS)) {
+      const file = path.join(dir, `${state}-${i}${ext}`);
+      if (fs.existsSync(file)) { found = imageDataUrl(file, mime); break; }
+    }
+    if (!found) break;
+    frames.push(found);
+  }
+  if (frames.length > 0) return frames;
   for (const [ext, mime] of Object.entries(SKIN_EXTS)) {
     const file = path.join(dir, state + ext);
-    if (fs.existsSync(file)) {
-      return `data:${mime};base64,${fs.readFileSync(file).toString('base64')}`;
-    }
+    if (fs.existsSync(file)) return [imageDataUrl(file, mime)];
   }
   return null;
 }
 
+// Optional skin.json in the folder: { "fps": 8, "states": { "busy": 12 } }
+function readSkinMeta(dir) {
+  try {
+    const meta = JSON.parse(fs.readFileSync(path.join(dir, 'skin.json'), 'utf-8'));
+    return meta && typeof meta === 'object' ? meta : {};
+  } catch { return {}; }
+}
+
 function loadSkinImagesFrom(dir) {
   if (!dir || !fs.existsSync(dir)) return null;
+  const meta = readSkinMeta(dir);
+  const baseFps = Number(meta.fps) > 0 ? Number(meta.fps) : 8;
   const images = {};
   for (const state of SKIN_STATES) {
-    const img = findSkinImage(dir, state);
-    if (!img) return null;
-    images[state] = img;
+    const frames = findStateFrames(dir, state);
+    if (!frames) return null;
+    const fps = Number(meta.states?.[state]) > 0 ? Number(meta.states[state]) : baseFps;
+    images[state] = { frames, fps };
   }
   for (const state of SKIN_OPTIONAL_STATES) {
-    images[state] = findSkinImage(dir, state) || images.idle;
+    const frames = findStateFrames(dir, state);
+    const fps = Number(meta.states?.[state]) > 0 ? Number(meta.states[state]) : baseFps;
+    images[state] = frames ? { frames, fps } : images.idle;
   }
   return images;
 }
@@ -120,7 +150,7 @@ function loadSkinImagesFor(pc) {
 }
 
 function validateSkinDir(dir) {
-  return SKIN_STATES.filter((s) => !findSkinImage(dir, s));
+  return SKIN_STATES.filter((s) => !findStateFrames(dir, s));
 }
 
 // ---------- sound cues (transition semantics mirror dashboard fleet-sounds) ----------
@@ -350,10 +380,13 @@ function mapAgentState(name) {
   const state = ((rich?.state || rec.state) || 'UNKNOWN').toUpperCase();
   let stateKey = 'idle';
   let label = name;
+  let toolStartedAt = null;
 
   if (rich) {
     const isThinking = state === 'BUSY' && (!rich.running_tools || rich.running_tools.length === 0);
     const isWaiting = rich.source?.pending_permission;
+    const lastMsg = rich.last_message;
+    const lastMsgText = typeof lastMsg === 'string' ? lastMsg : lastMsg?.text;
 
     if (state === 'OFFLINE' || state === 'UNKNOWN') {
       stateKey = 'offline';
@@ -371,13 +404,20 @@ function mapAgentState(name) {
       stateKey = 'busy';
       const tool = rich.running_tools?.[0];
       if (tool) {
-        const detail = tool.tool_detail ? `: ${tool.tool_detail.slice(0, 20)}` : '';
+        const detail = tool.tool_detail ? `: ${tool.tool_detail.slice(0, 120)}` : '';
         label = `${tool.tool_name}${detail}`;
+        if (tool.started_at) {
+          const ts = new Date(tool.started_at).getTime();
+          if (Number.isFinite(ts)) toolStartedAt = ts;
+        }
       } else {
         label = 'Working...';
       }
       const subs = rich.active_subagents?.length || 0;
-      if (subs > 0) label = `Working (${subs} helper${subs > 1 ? 's' : ''})`;
+      if (subs > 0) label = `${label} · ${subs} helper${subs > 1 ? 's' : ''}`;
+    } else if (lastMsgText) {
+      // idle: surface the last assistant reply
+      label = lastMsgText;
     }
   } else {
     if (state === 'OFFLINE' || state === 'UNKNOWN') {
@@ -389,19 +429,29 @@ function mapAgentState(name) {
     } else if (state === 'BUSY') {
       stateKey = 'busy';
       label = rec.activity || 'Working...';
+    } else if (rec.activity) {
+      label = rec.activity;
     }
   }
 
   const contextPct = rich?.context_pct ?? rec.context_pct ?? 0;
-  return { stateKey, label: String(label).slice(0, 48), contextPct };
+  return { stateKey, label: String(label).slice(0, 320), contextPct, toolStartedAt };
 }
 
 function sendState(name, win) {
   if (!win || win.isDestroyed()) return;
   const mapped = mapAgentState(name);
-  triggerCue(cueForTransition(prevStateKeys.get(name), mapped.stateKey));
+  const prevKey = prevStateKeys.get(name);
+  triggerCue(cueForTransition(prevKey, mapped.stateKey));
   prevStateKeys.set(name, mapped.stateKey);
-  win.webContents.send('state', { ...mapped, tint: petTint(name) });
+  if (prevKey !== mapped.stateKey || !stateSince.has(name)) {
+    stateSince.set(name, Date.now());
+  }
+  win.webContents.send('state', {
+    ...mapped,
+    tint: petTint(name),
+    since: stateSince.get(name),
+  });
 }
 
 function pushAllStates() {
@@ -414,13 +464,15 @@ function createPetWindow(name, index) {
   const display = screen.getPrimaryDisplay();
   const { width, height } = display.workAreaSize;
   const petSize = config.petSize;
+  const winW = Math.max(petSize, 176);
+  const winH = petSize + 100;
   const pc = petConfig(name);
-  const startX = pc.x >= 0 ? pc.x : width - petSize - 40 - index * (petSize + 10);
-  const startY = pc.y >= 0 ? pc.y : height - petSize - 20;
+  const startX = pc.x >= 0 ? pc.x : width - winW - 40 - index * (winW + 10);
+  const startY = pc.y >= 0 ? pc.y : height - winH - 20;
 
   const win = new BrowserWindow({
-    width: petSize,
-    height: petSize + 30,
+    width: winW,
+    height: winH,
     x: startX,
     y: startY,
     transparent: true,
@@ -471,6 +523,7 @@ function syncPetWindows() {
     } else if (!shouldShow && win) {
       petWindows.delete(name);
       prevStateKeys.delete(name);
+      stateSince.delete(name);
       if (!win.isDestroyed()) win.close();
     }
     index += 1;
@@ -480,6 +533,7 @@ function syncPetWindows() {
     if (!fleetAgents.has(name)) {
       petWindows.delete(name);
       prevStateKeys.delete(name);
+      stateSince.delete(name);
       if (!win.isDestroyed()) win.close();
     }
   }

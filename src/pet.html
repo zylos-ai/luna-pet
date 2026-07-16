@@ -20,6 +20,7 @@ html, body {
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
+  font-family: -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;
 }
 
 .pet {
@@ -43,26 +44,68 @@ html, body {
   height: 80px;
   object-fit: contain;
   -webkit-user-drag: none;
-  transition: opacity 0.3s ease, filter 0.3s ease;
   filter: var(--tint, none);
 }
 
-/* Status label */
-.status-label {
-  font-family: -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;
-  font-size: 10px;
-  color: rgba(255,255,255,0.9);
-  background: rgba(13, 148, 136, 0.85);
-  padding: 2px 8px;
-  border-radius: 8px;
-  margin-top: 4px;
-  white-space: nowrap;
-  text-align: center;
-  backdrop-filter: blur(4px);
+/* === STATUS AREA === */
+.status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  margin-top: 2px;
+  padding-bottom: 4px;
   -webkit-app-region: no-drag;
-  max-width: 140px;
+}
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.chip {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  border-radius: 5px;
+  padding: 1px 6px;
+  text-transform: uppercase;
+  backdrop-filter: blur(4px);
+}
+.chip.idle { background: rgba(13,148,136,0.85); color: #ccfbf1; }
+.chip.busy { background: rgba(37,99,235,0.85); color: #dbeafe; }
+.chip.thinking { background: rgba(124,58,237,0.85); color: #ede9fe; }
+.chip.stuck { background: rgba(220,38,38,0.88); color: #fee2e2; }
+.chip.waiting { background: rgba(217,119,6,0.88); color: #fef3c7; }
+.chip.offline { background: rgba(71,85,105,0.85); color: #e2e8f0; }
+.timer {
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255,255,255,0.92);
+  background: rgba(15,23,42,0.65);
+  border-radius: 5px;
+  padding: 1px 5px;
+  backdrop-filter: blur(4px);
+  display: none;
+}
+.timer.on { display: inline-block; }
+
+.label-box {
+  max-width: 164px;
+  max-height: 43px;
   overflow: hidden;
-  text-overflow: ellipsis;
+  background: rgba(15,23,42,0.72);
+  border-radius: 7px;
+  padding: 3px 7px;
+  backdrop-filter: blur(4px);
+}
+.label-inner {
+  font-size: 10px;
+  line-height: 1.25;
+  color: rgba(255,255,255,0.92);
+  text-align: center;
+  word-break: break-word;
+  white-space: pre-wrap;
+  will-change: transform;
 }
 
 /* === STATE ANIMATIONS === */
@@ -99,7 +142,7 @@ html, body {
   60% { transform: translateY(0); }
 }
 
-.state-offline .skin-img { opacity: 0.8; filter: var(--tint, none) saturate(0.5); }
+.state-offline .skin-img { opacity: 0.8; filter: var(--tint, none) saturate(0.5); animation: none; }
 .state-offline .pet-body { animation: sleep-bob 4s ease-in-out infinite; }
 .state-offline .zzz { display: block; }
 @keyframes sleep-bob {
@@ -156,7 +199,15 @@ html, body {
       <div class="zzz">💤</div>
     </div>
   </div>
-  <div class="status-label" id="status-label">Connecting...</div>
+  <div class="status">
+    <div class="status-row">
+      <span class="chip idle" id="chip">···</span>
+      <span class="timer" id="timer"></span>
+    </div>
+    <div class="label-box" id="label-box">
+      <div class="label-inner" id="label">Connecting...</div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -166,26 +217,32 @@ const { playCue } = require(require('path').join(__dirname, 'sound-player.js'));
 let agentName = '';
 let skinImages = null;
 let currentStateKey = null;
-let currentImgState = null;
+let currentAnimState = null;
+let frameTimer = null;
+let timerBase = null;       // epoch ms the elapsed timer counts from
+let timerVisible = false;
+let labelAnim = null;
+let lastLabelText = null;
+
+const TIMED_STATES = new Set(['busy', 'thinking', 'waiting', 'stuck']);
 
 ipcRenderer.on('init', (_, data) => {
   agentName = data.agentName || '';
   skinImages = data.skinImages || null;
   applyTint(data.tint);
-  applySkinImage(currentStateKey || 'idle');
-  updateLabel(agentName || 'Connecting...');
+  playSkinState(currentStateKey || 'idle', true);
+  if (lastLabelText === null) setLabel(agentName || 'Connecting...');
 });
 
 ipcRenderer.on('skin', (_, { images, tint }) => {
   skinImages = images || null;
-  currentImgState = null;
   applyTint(tint);
-  applySkinImage(currentStateKey || 'idle');
+  playSkinState(currentStateKey || 'idle', true);
 });
 
 ipcRenderer.on('play-cue', (_, cue) => playCue(cue));
 
-ipcRenderer.on('state', (_, { stateKey, label, contextPct, tint }) => {
+ipcRenderer.on('state', (_, { stateKey, label, contextPct, tint, since, toolStartedAt }) => {
   const pet = document.getElementById('pet');
 
   pet.className = 'pet state-' + stateKey;
@@ -193,10 +250,96 @@ ipcRenderer.on('state', (_, { stateKey, label, contextPct, tint }) => {
   else if (contextPct > 60) pet.classList.add('context-high');
 
   applyTint(tint);
-  applySkinImage(stateKey);
-  updateLabel(label);
+  playSkinState(stateKey, false);
+  setChip(stateKey);
+  setLabel(label);
+
+  timerBase = toolStartedAt || since || null;
+  timerVisible = TIMED_STATES.has(stateKey) && timerBase !== null;
+  renderTimer();
+
   currentStateKey = stateKey;
 });
+
+// ---- frame player ----
+
+function playSkinState(stateKey, force) {
+  if (!skinImages || !skinImages[stateKey]) return;
+  if (!force && currentAnimState === stateKey) return;
+  currentAnimState = stateKey;
+
+  if (frameTimer) { clearInterval(frameTimer); frameTimer = null; }
+  const img = document.getElementById('skin-img');
+  const { frames, fps } = skinImages[stateKey];
+  img.src = frames[0];
+  if (frames.length > 1) {
+    let idx = 0;
+    frameTimer = setInterval(() => {
+      idx = (idx + 1) % frames.length;
+      img.src = frames[idx];
+    }, Math.max(1000 / (fps || 8), 40));
+  }
+}
+
+// ---- status chip + elapsed timer ----
+
+function setChip(stateKey) {
+  const chip = document.getElementById('chip');
+  chip.className = 'chip ' + stateKey;
+  chip.textContent = stateKey;
+}
+
+function formatElapsed(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}h${String(m).padStart(2, '0')}m`;
+  if (m > 0) return `${m}m${String(sec).padStart(2, '0')}s`;
+  return `${sec}s`;
+}
+
+function renderTimer() {
+  const el = document.getElementById('timer');
+  if (timerVisible && timerBase) {
+    el.classList.add('on');
+    el.textContent = formatElapsed(Date.now() - timerBase);
+  } else {
+    el.classList.remove('on');
+  }
+}
+setInterval(renderTimer, 1000);
+
+// ---- label with vertical marquee for overflow ----
+
+function setLabel(text) {
+  if (text === lastLabelText) return;
+  lastLabelText = text;
+  const box = document.getElementById('label-box');
+  const inner = document.getElementById('label');
+  if (labelAnim) { labelAnim.cancel(); labelAnim = null; }
+  inner.style.transform = '';
+  inner.textContent = text;
+
+  requestAnimationFrame(() => {
+    const overflow = inner.scrollHeight - box.clientHeight;
+    if (overflow > 4) {
+      labelAnim = inner.animate(
+        [
+          { transform: 'translateY(0)' },
+          { transform: `translateY(${-overflow}px)` },
+        ],
+        {
+          duration: Math.max(overflow * 90, 2500),
+          delay: 1500,
+          direction: 'alternate',
+          iterations: Infinity,
+          easing: 'linear',
+        }
+      );
+    }
+  });
+}
 
 function applyTint(tint) {
   const pet = document.getElementById('pet');
@@ -205,18 +348,6 @@ function applyTint(tint) {
   } else {
     pet.style.removeProperty('--tint');
   }
-}
-
-function applySkinImage(stateKey) {
-  if (!skinImages || !skinImages[stateKey]) return;
-  if (currentImgState !== stateKey) {
-    currentImgState = stateKey;
-    document.getElementById('skin-img').src = skinImages[stateKey];
-  }
-}
-
-function updateLabel(text) {
-  document.getElementById('status-label').textContent = text;
 }
 </script>
 </body>
