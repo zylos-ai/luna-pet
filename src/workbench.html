@@ -155,6 +155,9 @@ button:hover { filter: brightness(1.1); }
 
 <script>
 const { ipcRenderer } = require('electron');
+const { playCue } = require(require('path').join(__dirname, 'sound-player.js'));
+
+ipcRenderer.on('play-cue', (_, cue) => playCue(cue));
 
 let data = null;
 let urlDirty = false;

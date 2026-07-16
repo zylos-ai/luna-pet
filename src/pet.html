@@ -44,6 +44,7 @@ html, body {
   object-fit: contain;
   -webkit-user-drag: none;
   transition: opacity 0.3s ease, filter 0.3s ease;
+  filter: var(--tint, none);
 }
 
 /* Status label */
@@ -98,7 +99,7 @@ html, body {
   60% { transform: translateY(0); }
 }
 
-.state-offline .skin-img { opacity: 0.8; filter: saturate(0.5); }
+.state-offline .skin-img { opacity: 0.8; filter: var(--tint, none) saturate(0.5); }
 .state-offline .pet-body { animation: sleep-bob 4s ease-in-out infinite; }
 .state-offline .zzz { display: block; }
 @keyframes sleep-bob {
@@ -160,49 +161,51 @@ html, body {
 
 <script>
 const { ipcRenderer } = require('electron');
+const { playCue } = require(require('path').join(__dirname, 'sound-player.js'));
 
 let agentName = '';
 let skinImages = null;
-let sounds = {};
-let soundEnabled = true;
 let currentStateKey = null;
 let currentImgState = null;
-let lastSoundAt = 0;
-
-const SOUND_GAP_MS = 4000;
 
 ipcRenderer.on('init', (_, data) => {
   agentName = data.agentName || '';
   skinImages = data.skinImages || null;
-  sounds = data.sounds || {};
-  soundEnabled = data.soundEnabled !== false;
+  applyTint(data.tint);
   applySkinImage(currentStateKey || 'idle');
   updateLabel(agentName || 'Connecting...');
 });
 
-ipcRenderer.on('skin', (_, images) => {
+ipcRenderer.on('skin', (_, { images, tint }) => {
   skinImages = images || null;
   currentImgState = null;
+  applyTint(tint);
   applySkinImage(currentStateKey || 'idle');
 });
 
-ipcRenderer.on('sound-enabled', (_, enabled) => {
-  soundEnabled = Boolean(enabled);
-});
+ipcRenderer.on('play-cue', (_, cue) => playCue(cue));
 
-ipcRenderer.on('state', (_, { stateKey, label, contextPct }) => {
+ipcRenderer.on('state', (_, { stateKey, label, contextPct, tint }) => {
   const pet = document.getElementById('pet');
-  const prev = currentStateKey;
 
   pet.className = 'pet state-' + stateKey;
   if (contextPct > 80) pet.classList.add('context-critical');
   else if (contextPct > 60) pet.classList.add('context-high');
 
+  applyTint(tint);
   applySkinImage(stateKey);
   updateLabel(label);
-  maybePlaySound(prev, stateKey);
   currentStateKey = stateKey;
 });
+
+function applyTint(tint) {
+  const pet = document.getElementById('pet');
+  if (typeof tint === 'number') {
+    pet.style.setProperty('--tint', `hue-rotate(${tint}deg)`);
+  } else {
+    pet.style.removeProperty('--tint');
+  }
+}
 
 function applySkinImage(stateKey) {
   if (!skinImages || !skinImages[stateKey]) return;
@@ -210,24 +213,6 @@ function applySkinImage(stateKey) {
     currentImgState = stateKey;
     document.getElementById('skin-img').src = skinImages[stateKey];
   }
-}
-
-function maybePlaySound(prev, next) {
-  if (!soundEnabled || prev === null || prev === next) return;
-
-  let name = null;
-  if (next === 'stuck') name = 'stuck';
-  else if (next === 'waiting') name = 'waiting';
-  else if (next === 'idle' && (prev === 'busy' || prev === 'thinking')) name = 'done';
-  if (!name || !sounds[name]) return;
-
-  const now = Date.now();
-  if (now - lastSoundAt < SOUND_GAP_MS) return;
-  lastSoundAt = now;
-
-  const audio = new Audio(sounds[name]);
-  audio.volume = 0.4;
-  audio.play().catch(() => {});
 }
 
 function updateLabel(text) {

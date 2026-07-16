@@ -4,7 +4,11 @@ const fs = require('fs');
 const https = require('https');
 const http = require('http');
 
-const VERSION = 'v0.4.0';
+// Pet windows are non-focusable and never receive a user gesture, which
+// would leave WebAudio suspended forever under Chromium's autoplay policy.
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+
+const VERSION = 'v0.4.1';
 const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
 const DEFAULT_PET = { visible: false, skin: 'octopus', customSkinDir: '', x: -1, y: -1 };
 const DEFAULT_CONFIG = {
@@ -23,7 +27,6 @@ const BUILTIN_SKINS = {
 const SKIN_STATES = ['idle', 'busy', 'thinking', 'stuck', 'offline'];
 const SKIN_OPTIONAL_STATES = ['waiting'];
 const SKIN_EXTS = { '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg' };
-const SOUND_NAMES = ['done', 'waiting', 'stuck'];
 
 let tray = null;
 let setupWindow = null;
@@ -35,7 +38,8 @@ let selfName = null;
 let selfRich = null;            // latest detailed state payload (self agent only)
 let allHidden = false;
 let connected = false;
-let sounds = null;
+const prevStateKeys = new Map(); // agent name -> last stateKey seen (visible pets only)
+const lastCueAt = new Map();     // cue name -> ts, global rate limit
 
 // ---------- config ----------
 
@@ -119,16 +123,34 @@ function validateSkinDir(dir) {
   return SKIN_STATES.filter((s) => !findSkinImage(dir, s));
 }
 
-function loadSounds() {
-  if (sounds) return sounds;
-  sounds = {};
-  for (const name of SOUND_NAMES) {
-    const file = path.join(__dirname, '..', 'assets', 'sounds', `${name}.wav`);
-    if (fs.existsSync(file)) {
-      sounds[name] = `data:audio/wav;base64,${fs.readFileSync(file).toString('base64')}`;
-    }
+// ---------- sound cues (transition semantics mirror dashboard fleet-sounds) ----------
+
+function isWorkingKey(key) {
+  return key === 'busy' || key === 'thinking';
+}
+
+// First sighting seeds silently; busy<->thinking is not a transition;
+// working->stuck gets its own cue rather than a misleading "finish".
+function cueForTransition(prevKey, nextKey) {
+  if (prevKey === undefined || prevKey === nextKey) return null;
+  if (nextKey === 'waiting') return 'waiting';
+  if (nextKey === 'stuck') return 'stuck';
+  if (!isWorkingKey(prevKey) && isWorkingKey(nextKey)) return 'start';
+  if (isWorkingKey(prevKey) && nextKey === 'idle') return 'finish';
+  return null;
+}
+
+function triggerCue(cue) {
+  if (!cue || !config.soundEnabled) return;
+  const now = Date.now();
+  if (now - (lastCueAt.get(cue) || 0) < 2000) return;
+  lastCueAt.set(cue, now);
+  let target = null;
+  for (const win of petWindows.values()) {
+    if (!win.isDestroyed()) { target = win; break; }
   }
-  return sounds;
+  if (!target && workbenchWindow && !workbenchWindow.isDestroyed()) target = workbenchWindow;
+  if (target) target.webContents.send('play-cue', cue);
 }
 
 // ---------- auth ----------
@@ -291,6 +313,30 @@ function handleSSEEvent(event, dataStr) {
   }
 }
 
+// ---------- identity tint (mirrors zylos-dashboard agent-color.js) ----------
+
+function fnv1a32(value) {
+  let hash = 0x811c9dc5;
+  for (const ch of String(value || '')) {
+    hash ^= ch.codePointAt(0);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash >>> 0;
+}
+
+function agentHue(name) {
+  const rec = fleetAgents.get(name);
+  const remote = Number(rec?.hue);
+  if (Number.isFinite(remote)) return ((remote % 360) + 360) % 360;
+  return fnv1a32(String(name || '').toLowerCase()) % 360;
+}
+
+// Only built-in skins get the identity tint; custom skins render as authored.
+function petTint(name) {
+  const pc = petConfig(name);
+  return pc.skin === 'custom' ? null : agentHue(name);
+}
+
 // ---------- state mapping ----------
 
 function mapAgentState(name) {
@@ -352,7 +398,10 @@ function mapAgentState(name) {
 
 function sendState(name, win) {
   if (!win || win.isDestroyed()) return;
-  win.webContents.send('state', mapAgentState(name));
+  const mapped = mapAgentState(name);
+  triggerCue(cueForTransition(prevStateKeys.get(name), mapped.stateKey));
+  prevStateKeys.set(name, mapped.stateKey);
+  win.webContents.send('state', { ...mapped, tint: petTint(name) });
 }
 
 function pushAllStates() {
@@ -395,8 +444,7 @@ function createPetWindow(name, index) {
     win.webContents.send('init', {
       agentName: name,
       skinImages: loadSkinImagesFor(pc),
-      sounds: loadSounds(),
-      soundEnabled: config.soundEnabled,
+      tint: petTint(name),
     });
     sendState(name, win);
   });
@@ -422,6 +470,7 @@ function syncPetWindows() {
       createPetWindow(name, index);
     } else if (!shouldShow && win) {
       petWindows.delete(name);
+      prevStateKeys.delete(name);
       if (!win.isDestroyed()) win.close();
     }
     index += 1;
@@ -430,6 +479,7 @@ function syncPetWindows() {
   for (const [name, win] of [...petWindows]) {
     if (!fleetAgents.has(name)) {
       petWindows.delete(name);
+      prevStateKeys.delete(name);
       if (!win.isDestroyed()) win.close();
     }
   }
@@ -581,7 +631,7 @@ ipcMain.handle('wb-set-skin', (_event, { name, skin }) => {
   saveConfig();
   const win = petWindows.get(name);
   if (win && !win.isDestroyed()) {
-    win.webContents.send('skin', loadSkinImagesFor(pc));
+    win.webContents.send('skin', { images: loadSkinImagesFor(pc), tint: petTint(name) });
   }
   pushWorkbench();
   return { ok: true };
@@ -610,9 +660,7 @@ ipcMain.handle('wb-save-settings', async (_event, { dashboardUrl, apiKey, keepKe
 function setSoundEnabled(enabled) {
   config.soundEnabled = enabled;
   saveConfig();
-  for (const win of petWindows.values()) {
-    if (!win.isDestroyed()) win.webContents.send('sound-enabled', enabled);
-  }
+  if (enabled) triggerCue('start'); // audible confirmation, mirrors dashboard unmute
   rebuildTrayMenu();
   pushWorkbench();
 }
