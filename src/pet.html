@@ -89,6 +89,34 @@ html, body {
 }
 .timer.on { display: inline-block; }
 
+/* name tag: identity dot in the agent's dashboard color + agent name */
+.name-tag {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  max-width: 82px;
+  font-size: 9px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.92);
+  background: rgba(15,23,42,0.65);
+  border-radius: 5px;
+  padding: 1px 6px 1px 5px;
+  backdrop-filter: blur(4px);
+}
+.name-tag.on { display: inline-flex; }
+.name-tag .dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--name-color, rgba(255,255,255,0.5));
+}
+.name-tag .nm {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* speech bubble: shows the agent's last reply, tail points up at the pet.
    Long text clamps to 3 lines with an ellipsis; hovering opens the overlay. */
 .label-box {
@@ -265,6 +293,7 @@ html, body {
   </div>
   <div class="status">
     <div class="status-row">
+      <span class="name-tag" id="name-tag"><span class="dot"></span><span class="nm" id="name-text"></span></span>
       <span class="chip idle" id="chip">···</span>
       <span class="timer" id="timer"></span>
     </div>
@@ -294,6 +323,7 @@ ipcRenderer.on('init', (_, data) => {
   agentName = data.agentName || '';
   skinImages = data.skinImages || null;
   applyTint(data.tint);
+  setNameTag(data.nameColor);
   playSkinState(currentStateKey || 'idle', true);
   if (lastLabelText === null) setLabel('');
 });
@@ -306,7 +336,7 @@ ipcRenderer.on('skin', (_, { images, tint }) => {
 
 ipcRenderer.on('play-cue', (_, cue) => playCue(cue));
 
-ipcRenderer.on('state', (_, { stateKey, bubble, contextPct, tint, since, toolStartedAt, subCount, hasSubs }) => {
+ipcRenderer.on('state', (_, { stateKey, bubble, contextPct, tint, nameColor, since, toolStartedAt, subCount, hasSubs }) => {
   const pet = document.getElementById('pet');
 
   pet.className = 'pet state-' + stateKey;
@@ -314,6 +344,7 @@ ipcRenderer.on('state', (_, { stateKey, bubble, contextPct, tint, since, toolSta
   else if (contextPct > 60) pet.classList.add('context-high');
 
   applyTint(tint);
+  setNameTag(nameColor);
   playSkinState(stateKey, false);
   setChip(stateKey);
   setLabel(bubble || '');
@@ -429,6 +460,13 @@ function applyTint(tint) {
   } else {
     pet.style.removeProperty('--tint');
   }
+}
+
+function setNameTag(color) {
+  const tag = document.getElementById('name-tag');
+  if (color) tag.style.setProperty('--name-color', color);
+  document.getElementById('name-text').textContent = agentName;
+  tag.classList.toggle('on', !!agentName);
 }
 </script>
 </body>

@@ -367,6 +367,15 @@ function petTint(name) {
   return pc.skin === 'custom' ? null : agentHue(name);
 }
 
+// Identity color for the name tag — prefer the dashboard-assigned color from
+// the fleet record so the tag matches the dashboard exactly; derive from the
+// hue otherwise. Unlike the tint this also applies to custom skins.
+function agentColor(name) {
+  const rec = fleetAgents.get(name);
+  if (rec?.color) return String(rec.color);
+  return `hsl(${agentHue(name)}, 70%, 60%)`;
+}
+
 // ---------- state mapping ----------
 
 // The bubble is speech, not a document: drop markdown markers that read as
@@ -478,6 +487,7 @@ function sendState(name, win) {
   win.webContents.send('state', {
     ...mapped,
     tint: petTint(name),
+    nameColor: agentColor(name),
     since: stateSince.get(name),
   });
 }
@@ -525,6 +535,7 @@ function createPetWindow(name, index) {
       agentName: name,
       skinImages: loadSkinImagesFor(pc),
       tint: petTint(name),
+      nameColor: agentColor(name),
     });
     sendState(name, win);
   });

@@ -194,6 +194,9 @@ const stateMsg = lunaWin.webContents.sent.filter(([ch]) => ch === 'state').pop()
 check('state carries tint field', stateMsg && 'tint' in stateMsg[1]);
 check('state carries since timestamp', stateMsg && typeof stateMsg[1].since === 'number');
 check('state carries bubble + subagent fields', stateMsg && 'bubble' in stateMsg[1] && 'subCount' in stateMsg[1] && 'hasSubs' in stateMsg[1]);
+check('init carries agentName + nameColor', initMsg && initMsg[1].agentName === 'Luna' && typeof initMsg[1].nameColor === 'string' && initMsg[1].nameColor.length > 0);
+check('state carries nameColor', stateMsg && typeof stateMsg[1].nameColor === 'string');
+check('nameColor present even for custom skin (tint null)', initMsg[1].tint === null && initMsg[1].nameColor.startsWith('hsl('));
 
 // sound cues: drive Luna busy -> idle with sound on, expect start + finish cues
 const cuesSent = () => lunaWin.webContents.sent.filter(([ch]) => ch === 'play-cue').map(([, c]) => c);
