@@ -1,10 +1,11 @@
 {
   "name": "luna-pet",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Luna desktop pet — live agent state on your desktop",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
+    "test": "node test/smoke-test.js",
     "build": "electron-builder --mac",
     "build:dmg": "electron-builder --mac dmg",
     "build:zip": "electron-builder --mac zip"

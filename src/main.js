@@ -8,7 +8,7 @@ const http = require('http');
 // would leave WebAudio suspended forever under Chromium's autoplay policy.
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
-const VERSION = 'v0.5.0';
+const VERSION = 'v0.5.1';
 const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
 const DEFAULT_PET = { visible: false, skin: 'octopus', customSkinDir: '', x: -1, y: -1 };
 const DEFAULT_CONFIG = {
@@ -369,24 +369,32 @@ function petTint(name) {
 
 // ---------- state mapping ----------
 
+// `label` is workbench-facing activity text; the pet itself shows `bubble` —
+// the agent's last spoken reply — so tool internals never reach the pet.
 function mapAgentState(name) {
   const rec = fleetAgents.get(name) || {};
   const rich = name === selfName ? selfRich : null;
 
   if (!connected) {
-    return { stateKey: 'offline', label: 'Reconnecting...', contextPct: 0 };
+    return { stateKey: 'offline', label: 'Reconnecting...', bubble: '', contextPct: 0, subCount: 0, hasSubs: false };
   }
 
   const state = ((rich?.state || rec.state) || 'UNKNOWN').toUpperCase();
   let stateKey = 'idle';
   let label = name;
   let toolStartedAt = null;
+  let bubble = '';
+  let subCount = 0;
+  let hasSubs = false;
 
   if (rich) {
     const isThinking = state === 'BUSY' && (!rich.running_tools || rich.running_tools.length === 0);
     const isWaiting = rich.source?.pending_permission;
     const lastMsg = rich.last_message;
     const lastMsgText = typeof lastMsg === 'string' ? lastMsg : lastMsg?.text;
+    bubble = lastMsgText || '';
+    subCount = rich.active_subagents?.length || 0;
+    hasSubs = subCount > 0;
 
     if (state === 'OFFLINE' || state === 'UNKNOWN') {
       stateKey = 'offline';
@@ -398,8 +406,11 @@ function mapAgentState(name) {
       stateKey = 'waiting';
       label = 'Waiting for you';
     } else if (isThinking) {
+      // rich.reason says "Thinking (Ns)" where N is the whole turn's age, not
+      // time spent thinking — misleading, so never surface it. The pet's own
+      // timer (since last state change) is the honest elapsed value.
       stateKey = 'thinking';
-      label = rich.reason || 'Thinking...';
+      label = 'Thinking...';
     } else if (state === 'BUSY') {
       stateKey = 'busy';
       const tool = rich.running_tools?.[0];
@@ -413,13 +424,13 @@ function mapAgentState(name) {
       } else {
         label = 'Working...';
       }
-      const subs = rich.active_subagents?.length || 0;
-      if (subs > 0) label = `${label} · ${subs} helper${subs > 1 ? 's' : ''}`;
     } else if (lastMsgText) {
       // idle: surface the last assistant reply
       label = lastMsgText;
     }
   } else {
+    hasSubs = rec.has_subagent === true;
+    subCount = 0; // remote fleet records only carry a boolean
     if (state === 'OFFLINE' || state === 'UNKNOWN') {
       stateKey = 'offline';
       label = 'Offline';
@@ -435,7 +446,15 @@ function mapAgentState(name) {
   }
 
   const contextPct = rich?.context_pct ?? rec.context_pct ?? 0;
-  return { stateKey, label: String(label).slice(0, 320), contextPct, toolStartedAt };
+  return {
+    stateKey,
+    label: String(label).slice(0, 320),
+    bubble: String(bubble).slice(0, 320),
+    contextPct,
+    toolStartedAt,
+    subCount,
+    hasSubs,
+  };
 }
 
 function sendState(name, win) {

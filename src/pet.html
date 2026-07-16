@@ -89,15 +89,29 @@ html, body {
 }
 .timer.on { display: inline-block; }
 
+/* speech bubble: shows the agent's last reply, tail points up at the pet */
 .label-box {
+  position: relative;
   max-width: 164px;
   max-height: 43px;
   overflow: hidden;
   background: rgba(15,23,42,0.72);
-  border-radius: 7px;
-  padding: 3px 7px;
+  border-radius: 9px;
+  padding: 3px 8px;
   backdrop-filter: blur(4px);
+  margin-top: 4px;
 }
+.label-box::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translate(-50%, -100%);
+  border: 5px solid transparent;
+  border-bottom-color: rgba(15,23,42,0.72);
+  border-top-width: 0;
+}
+.label-box.empty { display: none; }
 .label-inner {
   font-size: 10px;
   line-height: 1.25;
@@ -165,6 +179,29 @@ html, body {
   100% { opacity: 0; transform: translateY(-16px) scale(0.8); }
 }
 
+/* Subagent count badge (mirrors the dashboard's green fleet light) */
+.sub-badge {
+  display: none;
+  position: absolute;
+  top: -2px;
+  right: -6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: rgba(34,197,94,0.95);
+  border: 1.5px solid rgba(255,255,255,0.9);
+  box-shadow: 0 0 0 3px rgba(34,197,94,0.25);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 13px;
+  text-align: center;
+  z-index: 2;
+}
+.sub-badge.on { display: block; }
+.sub-badge.dot { min-width: 11px; width: 11px; height: 11px; border-radius: 6px; padding: 0; }
+
 /* Context gauge ring */
 .context-ring {
   position: absolute;
@@ -196,6 +233,7 @@ html, body {
     <div class="pet-body">
       <div class="context-ring"></div>
       <img class="skin-img" id="skin-img" alt="">
+      <div class="sub-badge" id="sub-badge"></div>
       <div class="zzz">💤</div>
     </div>
   </div>
@@ -204,8 +242,8 @@ html, body {
       <span class="chip idle" id="chip">···</span>
       <span class="timer" id="timer"></span>
     </div>
-    <div class="label-box" id="label-box">
-      <div class="label-inner" id="label">Connecting...</div>
+    <div class="label-box empty" id="label-box">
+      <div class="label-inner" id="label"></div>
     </div>
   </div>
 </div>
@@ -231,7 +269,7 @@ ipcRenderer.on('init', (_, data) => {
   skinImages = data.skinImages || null;
   applyTint(data.tint);
   playSkinState(currentStateKey || 'idle', true);
-  if (lastLabelText === null) setLabel(agentName || 'Connecting...');
+  if (lastLabelText === null) setLabel('');
 });
 
 ipcRenderer.on('skin', (_, { images, tint }) => {
@@ -242,7 +280,7 @@ ipcRenderer.on('skin', (_, { images, tint }) => {
 
 ipcRenderer.on('play-cue', (_, cue) => playCue(cue));
 
-ipcRenderer.on('state', (_, { stateKey, label, contextPct, tint, since, toolStartedAt }) => {
+ipcRenderer.on('state', (_, { stateKey, bubble, contextPct, tint, since, toolStartedAt, subCount, hasSubs }) => {
   const pet = document.getElementById('pet');
 
   pet.className = 'pet state-' + stateKey;
@@ -252,7 +290,8 @@ ipcRenderer.on('state', (_, { stateKey, label, contextPct, tint, since, toolStar
   applyTint(tint);
   playSkinState(stateKey, false);
   setChip(stateKey);
-  setLabel(label);
+  setLabel(bubble || '');
+  setSubBadge(subCount, hasSubs);
 
   timerBase = toolStartedAt || since || null;
   timerVisible = TIMED_STATES.has(stateKey) && timerBase !== null;
@@ -320,6 +359,7 @@ function setLabel(text) {
   if (labelAnim) { labelAnim.cancel(); labelAnim = null; }
   inner.style.transform = '';
   inner.textContent = text;
+  box.classList.toggle('empty', !text);
 
   requestAnimationFrame(() => {
     const overflow = inner.scrollHeight - box.clientHeight;
@@ -339,6 +379,22 @@ function setLabel(text) {
       );
     }
   });
+}
+
+// self reports a real count; remote fleet records only say "has helpers"
+function setSubBadge(subCount, hasSubs) {
+  const badge = document.getElementById('sub-badge');
+  if (!hasSubs) {
+    badge.className = 'sub-badge';
+    return;
+  }
+  if (subCount > 0) {
+    badge.className = 'sub-badge on';
+    badge.textContent = subCount;
+  } else {
+    badge.className = 'sub-badge on dot';
+    badge.textContent = '';
+  }
 }
 
 function applyTint(tint) {
