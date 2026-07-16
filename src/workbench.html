@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #16181d;
+  --panel: #1e2128;
+  --border: #2c3038;
+  --text: #e8eaed;
+  --muted: #8a919e;
+  --accent: #14b8a6;
+}
+body {
+  font-family: -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  padding: 16px;
+  user-select: none;
+}
+h1 {
+  font-size: 15px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.conn-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #ef4444;
+}
+.conn-dot.on { background: #22c55e; }
+.version { color: var(--muted); font-size: 11px; font-weight: 400; margin-left: auto; }
+
+.section {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  margin-top: 14px;
+}
+.section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.agent-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.agent-row:last-child { border-bottom: none; }
+.agent-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; background: #64748b; }
+.agent-name { font-weight: 600; white-space: nowrap; }
+.self-badge {
+  font-size: 9px; color: var(--accent); border: 1px solid var(--accent);
+  border-radius: 4px; padding: 0 4px; margin-left: 4px; vertical-align: 1px;
+}
+.agent-status { flex: 1; min-width: 0; overflow: hidden; }
+.state-badge {
+  display: inline-block; font-size: 10px; border-radius: 4px; padding: 1px 6px;
+  font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em;
+}
+.state-idle { background: rgba(20,184,166,0.15); color: #2dd4bf; }
+.state-busy { background: rgba(59,130,246,0.15); color: #60a5fa; }
+.state-thinking { background: rgba(167,139,250,0.15); color: #a78bfa; }
+.state-stuck { background: rgba(239,68,68,0.15); color: #f87171; }
+.state-waiting { background: rgba(245,158,11,0.15); color: #fbbf24; }
+.state-offline { background: rgba(100,116,139,0.2); color: #94a3b8; }
+.agent-label {
+  color: var(--muted); font-size: 11px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; margin-top: 2px;
+}
+
+select {
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px;
+  font-size: 11px; padding: 3px 4px; max-width: 110px;
+}
+
+.switch { position: relative; width: 34px; height: 20px; flex-shrink: 0; cursor: pointer; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider {
+  position: absolute; inset: 0; border-radius: 10px;
+  background: #3f4451; transition: background 0.2s;
+}
+.slider::before {
+  content: ''; position: absolute; width: 16px; height: 16px;
+  border-radius: 50%; background: #fff; top: 2px; left: 2px;
+  transition: transform 0.2s;
+}
+.switch input:checked + .slider { background: var(--accent); }
+.switch input:checked + .slider::before { transform: translateX(14px); }
+
+.pref-row { display: flex; align-items: center; justify-content: space-between; padding: 4px 4px; }
+
+label.field { display: block; color: var(--muted); font-size: 11px; margin: 8px 4px 4px; }
+input[type=text], input[type=password] {
+  width: 100%; background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px 8px; font-size: 12px;
+}
+button {
+  background: var(--accent); color: #04211d; font-weight: 600;
+  border: none; border-radius: 6px; padding: 6px 14px;
+  font-size: 12px; cursor: pointer; margin-top: 10px;
+}
+button:hover { filter: brightness(1.1); }
+.msg { font-size: 11px; margin-top: 8px; margin-left: 4px; }
+.msg.ok { color: #22c55e; }
+.msg.err { color: #f87171; }
+.empty { color: var(--muted); padding: 8px 4px; font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>
+  <span class="conn-dot" id="conn-dot"></span>
+  Luna Pet Workbench
+  <span class="version" id="version"></span>
+</h1>
+
+<div class="section">
+  <div class="section-title">Agent Fleet</div>
+  <div id="fleet"></div>
+</div>
+
+<div class="section">
+  <div class="section-title">Preferences</div>
+  <div class="pref-row">
+    <span>Sound effects</span>
+    <label class="switch">
+      <input type="checkbox" id="sound-toggle">
+      <span class="slider"></span>
+    </label>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">Connection</div>
+  <label class="field">Dashboard URL</label>
+  <input type="text" id="dashboard-url" placeholder="https://your-dashboard.example.com">
+  <label class="field">API Key</label>
+  <input type="password" id="api-key" placeholder="paste a read-scope API key">
+  <button id="save-btn">Save &amp; Connect</button>
+  <div class="msg" id="save-msg"></div>
+</div>
+
+<script>
+const { ipcRenderer } = require('electron');
+
+let data = null;
+let urlDirty = false;
+let keyDirty = false;
+
+const fleetEl = document.getElementById('fleet');
+const urlInput = document.getElementById('dashboard-url');
+const keyInput = document.getElementById('api-key');
+
+urlInput.addEventListener('input', () => { urlDirty = true; });
+keyInput.addEventListener('input', () => { keyDirty = true; });
+
+function render() {
+  if (!data) return;
+  document.getElementById('version').textContent = data.version;
+  document.getElementById('conn-dot').className = 'conn-dot' + (data.connected ? ' on' : '');
+  document.getElementById('sound-toggle').checked = data.soundEnabled;
+  if (!urlDirty) urlInput.value = data.dashboardUrl || '';
+  if (!keyDirty) keyInput.placeholder = data.hasApiKey ? '•••••••• (saved)' : 'paste a read-scope API key';
+
+  fleetEl.innerHTML = '';
+  if (!data.agents.length) {
+    const div = document.createElement('div');
+    div.className = 'empty';
+    div.textContent = data.connected ? 'Waiting for fleet data...' : 'Not connected — check Connection settings below.';
+    fleetEl.appendChild(div);
+    return;
+  }
+
+  for (const agent of data.agents) {
+    const row = document.createElement('div');
+    row.className = 'agent-row';
+
+    const dot = document.createElement('span');
+    dot.className = 'agent-dot';
+    if (agent.color) dot.style.background = agent.color;
+    row.appendChild(dot);
+
+    const status = document.createElement('div');
+    status.className = 'agent-status';
+    const nameLine = document.createElement('div');
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'agent-name';
+    nameSpan.textContent = agent.name;
+    nameLine.appendChild(nameSpan);
+    if (agent.self) {
+      const badge = document.createElement('span');
+      badge.className = 'self-badge';
+      badge.textContent = 'SELF';
+      nameLine.appendChild(badge);
+    }
+    const stateBadge = document.createElement('span');
+    stateBadge.className = 'state-badge state-' + agent.state;
+    stateBadge.textContent = agent.state;
+    stateBadge.style.marginLeft = '8px';
+    nameLine.appendChild(stateBadge);
+    status.appendChild(nameLine);
+    const label = document.createElement('div');
+    label.className = 'agent-label';
+    label.textContent = agent.label || '';
+    status.appendChild(label);
+    row.appendChild(status);
+
+    const skinSelect = document.createElement('select');
+    const optOcto = document.createElement('option');
+    optOcto.value = 'octopus';
+    optOcto.textContent = 'Octopus';
+    skinSelect.appendChild(optOcto);
+    const optCustom = document.createElement('option');
+    optCustom.value = 'custom';
+    optCustom.textContent = agent.skin === 'custom' && agent.customSkinDir
+      ? 'Custom (' + agent.customSkinDir.split('/').pop() + ')'
+      : 'Custom folder…';
+    skinSelect.appendChild(optCustom);
+    skinSelect.value = agent.skin === 'custom' ? 'custom' : 'octopus';
+    skinSelect.addEventListener('change', async () => {
+      const result = await ipcRenderer.invoke('wb-set-skin', { name: agent.name, skin: skinSelect.value });
+      if (!result.ok) skinSelect.value = agent.skin === 'custom' ? 'custom' : 'octopus';
+    });
+    row.appendChild(skinSelect);
+
+    const sw = document.createElement('label');
+    sw.className = 'switch';
+    sw.title = 'Show this pet on the desktop';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = agent.visible;
+    cb.addEventListener('change', () => {
+      ipcRenderer.send('wb-set-visible', { name: agent.name, visible: cb.checked });
+    });
+    const slider = document.createElement('span');
+    slider.className = 'slider';
+    sw.appendChild(cb);
+    sw.appendChild(slider);
+    row.appendChild(sw);
+
+    fleetEl.appendChild(row);
+  }
+}
+
+document.getElementById('sound-toggle').addEventListener('change', (e) => {
+  ipcRenderer.send('wb-set-sound', { enabled: e.target.checked });
+});
+
+document.getElementById('save-btn').addEventListener('click', async () => {
+  const msg = document.getElementById('save-msg');
+  const dashboardUrl = urlInput.value.trim();
+  const apiKey = keyInput.value.trim() || (data && data.hasApiKey ? null : '');
+  if (!dashboardUrl) { msg.className = 'msg err'; msg.textContent = 'Dashboard URL is required.'; return; }
+  msg.className = 'msg'; msg.textContent = 'Connecting...';
+  const payload = { dashboardUrl };
+  payload.apiKey = keyInput.value.trim();
+  if (!payload.apiKey && data && data.hasApiKey) {
+    // keep the stored key when the field is left blank
+    payload.keepKey = true;
+  }
+  const result = await ipcRenderer.invoke('wb-save-settings', payload);
+  if (result.ok) {
+    msg.className = 'msg ok'; msg.textContent = 'Connected ✓';
+    urlDirty = false; keyDirty = false; keyInput.value = '';
+  } else {
+    msg.className = 'msg err'; msg.textContent = result.error || 'Failed to connect.';
+  }
+});
+
+ipcRenderer.on('wb-data', (_, d) => { data = d; render(); });
+ipcRenderer.invoke('wb-get-data').then((d) => { data = d; render(); });
+</script>
+</body>
+</html>

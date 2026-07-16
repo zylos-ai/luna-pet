@@ -161,28 +161,50 @@ html, body {
 <script>
 const { ipcRenderer } = require('electron');
 
-let config = {};
-let abortController = null;
-let reconnectTimer = null;
+let agentName = '';
 let skinImages = null;
-let currentStateKey = 'idle';
+let sounds = {};
+let soundEnabled = true;
+let currentStateKey = null;
 let currentImgState = null;
+let lastSoundAt = 0;
 
-ipcRenderer.on('config', (_, cfg) => {
-  config = cfg;
-  skinImages = cfg.skinImages || null;
-  applySkinState(currentStateKey);
-  connectSSE();
+const SOUND_GAP_MS = 4000;
+
+ipcRenderer.on('init', (_, data) => {
+  agentName = data.agentName || '';
+  skinImages = data.skinImages || null;
+  sounds = data.sounds || {};
+  soundEnabled = data.soundEnabled !== false;
+  applySkinImage(currentStateKey || 'idle');
+  updateLabel(agentName || 'Connecting...');
 });
 
 ipcRenderer.on('skin', (_, images) => {
   skinImages = images || null;
   currentImgState = null;
-  applySkinState(currentStateKey);
+  applySkinImage(currentStateKey || 'idle');
 });
 
-function applySkinState(stateKey) {
+ipcRenderer.on('sound-enabled', (_, enabled) => {
+  soundEnabled = Boolean(enabled);
+});
+
+ipcRenderer.on('state', (_, { stateKey, label, contextPct }) => {
+  const pet = document.getElementById('pet');
+  const prev = currentStateKey;
+
+  pet.className = 'pet state-' + stateKey;
+  if (contextPct > 80) pet.classList.add('context-critical');
+  else if (contextPct > 60) pet.classList.add('context-high');
+
+  applySkinImage(stateKey);
+  updateLabel(label);
+  maybePlaySound(prev, stateKey);
   currentStateKey = stateKey;
+});
+
+function applySkinImage(stateKey) {
   if (!skinImages || !skinImages[stateKey]) return;
   if (currentImgState !== stateKey) {
     currentImgState = stateKey;
@@ -190,166 +212,27 @@ function applySkinState(stateKey) {
   }
 }
 
-async function connectSSE() {
-  if (abortController) {
-    abortController.abort();
-    abortController = null;
-  }
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer);
-    reconnectTimer = null;
-  }
+function maybePlaySound(prev, next) {
+  if (!soundEnabled || prev === null || prev === next) return;
 
-  const base = (config.dashboardUrl || '').replace(/\/+$/, '');
-  const url = `${base}/api/stream`;
-  const headers = {};
-  if (config.sessionToken) {
-    headers['Authorization'] = `Bearer ${config.sessionToken}`;
-  } else if (config.apiKey) {
-    headers['Authorization'] = `Bearer ${config.apiKey}`;
-  }
+  let name = null;
+  if (next === 'stuck') name = 'stuck';
+  else if (next === 'waiting') name = 'waiting';
+  else if (next === 'idle' && (prev === 'busy' || prev === 'thinking')) name = 'done';
+  if (!name || !sounds[name]) return;
 
-  abortController = new AbortController();
+  const now = Date.now();
+  if (now - lastSoundAt < SOUND_GAP_MS) return;
+  lastSoundAt = now;
 
-  try {
-    const response = await fetch(url, {
-      headers,
-      signal: abortController.signal,
-    });
-
-    if (!response.ok) {
-      if (response.status === 401 && config.apiKey) {
-        await refreshToken();
-        return connectSSE();
-      }
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    updateLabel('Connected ✓');
-    setTimeout(() => updateLabel('Luna'), 2000);
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop();
-
-      let currentEvent = '';
-      let currentData = '';
-
-      for (const line of lines) {
-        if (line.startsWith('event: ')) {
-          currentEvent = line.slice(7).trim();
-        } else if (line.startsWith('data: ')) {
-          currentData = line.slice(6);
-        } else if (line === '' && currentData) {
-          handleSSEEvent(currentEvent, currentData);
-          currentEvent = '';
-          currentData = '';
-        }
-      }
-    }
-  } catch (err) {
-    if (err.name !== 'AbortError') {
-      updateLabel('Reconnecting...');
-      scheduleReconnect();
-    }
-  }
-}
-
-async function refreshToken() {
-  const result = await ipcRenderer.invoke('save-config', {
-    dashboardUrl: config.dashboardUrl,
-    apiKey: config.apiKey,
-  });
-  if (result.ok) {
-    config.sessionToken = result.token;
-  }
-}
-
-function handleSSEEvent(event, data) {
-  try {
-    const parsed = JSON.parse(data);
-    if (event === 'fleet_state') {
-      if (parsed.self) updatePetState(parsed.self);
-      else updatePetState(parsed);
-    } else if (event === 'state_change') {
-      updatePetState(parsed);
-    }
-  } catch {}
-}
-
-function scheduleReconnect() {
-  if (!reconnectTimer) {
-    reconnectTimer = setTimeout(connectSSE, 5000);
-  }
-}
-
-function updatePetState(data) {
-  const pet = document.getElementById('pet');
-  const state = (data.state || 'UNKNOWN').toUpperCase();
-  const isThinking = state === 'BUSY' && (!data.running_tools || data.running_tools.length === 0);
-  const isWaiting = data.source?.pending_permission;
-
-  let stateKey = 'idle';
-  let label = 'Luna';
-
-  if (state === 'OFFLINE') {
-    stateKey = 'offline';
-    label = 'Sleeping...';
-  } else if (state === 'STUCK' || state === 'POSSIBLY_STUCK') {
-    stateKey = 'stuck';
-    label = data.reason || 'Stuck';
-  } else if (isWaiting) {
-    stateKey = 'waiting';
-    label = 'Waiting for you';
-  } else if (isThinking) {
-    stateKey = 'thinking';
-    label = data.reason || 'Thinking...';
-  } else if (state === 'BUSY') {
-    stateKey = 'busy';
-    const tool = data.running_tools?.[0];
-    if (tool) {
-      const detail = tool.tool_detail ? `: ${tool.tool_detail.slice(0, 20)}` : '';
-      label = `${tool.tool_name}${detail}`;
-    } else {
-      label = 'Working...';
-    }
-  }
-
-  pet.className = 'pet state-' + stateKey;
-  applySkinState(stateKey);
-  updateLabel(label);
-
-  // Context gauge
-  const contextPct = data.context_pct || 0;
-  if (contextPct > 80) {
-    pet.classList.add('context-critical');
-  } else if (contextPct > 60) {
-    pet.classList.add('context-high');
-  }
-
-  // Subagent indicator
-  const subs = data.active_subagents?.length || 0;
-  if (subs > 0 && state === 'BUSY') {
-    updateLabel(`Working (${subs} helper${subs > 1 ? 's' : ''})`);
-  }
+  const audio = new Audio(sounds[name]);
+  audio.volume = 0.4;
+  audio.play().catch(() => {});
 }
 
 function updateLabel(text) {
   document.getElementById('status-label').textContent = text;
 }
-
-// Drag support
-let isDragging = false;
-document.addEventListener('mousedown', () => { isDragging = true; });
-document.addEventListener('mouseup', () => { isDragging = false; });
 </script>
 </body>
 </html>
