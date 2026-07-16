@@ -318,6 +318,29 @@ html, body {
   95% { height: 1px; }
 }
 
+/* === IMAGE SKIN MODE === */
+.skin-img {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+  -webkit-user-drag: none;
+  transition: opacity 0.3s ease, filter 0.3s ease;
+}
+.image-skin .orb,
+.image-skin .antenna { display: none; }
+.image-skin .skin-img { display: block; }
+
+.image-skin.state-idle .skin-img { animation: float 3s ease-in-out infinite; }
+.image-skin.state-busy .skin-img { animation: bounce 0.6s ease-in-out infinite; }
+.image-skin.state-thinking .skin-img { animation: think-pulse 2s ease-in-out infinite; }
+.image-skin.state-stuck .skin-img { animation: wobble 0.5s ease-in-out infinite; }
+.image-skin.state-waiting .skin-img { animation: wait-bounce 1.5s ease-in-out infinite; }
+.image-skin.state-offline .skin-img { opacity: 0.8; filter: saturate(0.5); }
+
 /* Context gauge ring */
 .context-ring {
   position: absolute;
@@ -356,6 +379,7 @@ html, body {
         <div class="mouth"></div>
       </div>
       <div class="antenna"></div>
+      <img class="skin-img" id="skin-img" alt="">
       <div class="zzz">💤</div>
     </div>
   </div>
@@ -368,11 +392,37 @@ const { ipcRenderer } = require('electron');
 let config = {};
 let abortController = null;
 let reconnectTimer = null;
+let skinImages = null;
+let currentStateKey = 'idle';
+let currentImgState = null;
 
 ipcRenderer.on('config', (_, cfg) => {
   config = cfg;
+  skinImages = cfg.skinImages || null;
+  applySkinState(currentStateKey);
   connectSSE();
 });
+
+ipcRenderer.on('skin', (_, images) => {
+  skinImages = images || null;
+  currentImgState = null;
+  if (!skinImages) {
+    document.getElementById('pet').classList.remove('image-skin');
+  }
+  applySkinState(currentStateKey);
+});
+
+function applySkinState(stateKey) {
+  currentStateKey = stateKey;
+  if (!skinImages || !skinImages[stateKey]) return;
+  const pet = document.getElementById('pet');
+  const img = document.getElementById('skin-img');
+  pet.classList.add('image-skin');
+  if (currentImgState !== stateKey) {
+    currentImgState = stateKey;
+    img.src = skinImages[stateKey];
+  }
+}
 
 async function connectSSE() {
   if (abortController) {
@@ -482,33 +532,35 @@ function updatePetState(data) {
   const isThinking = state === 'BUSY' && (!data.running_tools || data.running_tools.length === 0);
   const isWaiting = data.source?.pending_permission;
 
-  pet.className = 'pet';
+  let stateKey = 'idle';
+  let label = 'Luna';
 
   if (state === 'OFFLINE') {
-    pet.classList.add('state-offline');
-    updateLabel('Sleeping...');
+    stateKey = 'offline';
+    label = 'Sleeping...';
   } else if (state === 'STUCK' || state === 'POSSIBLY_STUCK') {
-    pet.classList.add('state-stuck');
-    updateLabel(data.reason || 'Stuck');
+    stateKey = 'stuck';
+    label = data.reason || 'Stuck';
   } else if (isWaiting) {
-    pet.classList.add('state-waiting');
-    updateLabel('Waiting for you');
+    stateKey = 'waiting';
+    label = 'Waiting for you';
   } else if (isThinking) {
-    pet.classList.add('state-thinking');
-    updateLabel(data.reason || 'Thinking...');
+    stateKey = 'thinking';
+    label = data.reason || 'Thinking...';
   } else if (state === 'BUSY') {
-    pet.classList.add('state-busy');
+    stateKey = 'busy';
     const tool = data.running_tools?.[0];
     if (tool) {
       const detail = tool.tool_detail ? `: ${tool.tool_detail.slice(0, 20)}` : '';
-      updateLabel(`${tool.tool_name}${detail}`);
+      label = `${tool.tool_name}${detail}`;
     } else {
-      updateLabel('Working...');
+      label = 'Working...';
     }
-  } else {
-    pet.classList.add('state-idle');
-    updateLabel('Luna');
   }
+
+  pet.className = 'pet state-' + stateKey;
+  applySkinState(stateKey);
+  updateLabel(label);
 
   // Context gauge
   const contextPct = data.context_pct || 0;

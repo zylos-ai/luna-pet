@@ -12,7 +12,57 @@ const DEFAULT_CONFIG = {
   petSize: 120,
   idleX: -1,
   idleY: -1,
+  skin: 'octopus',
+  customSkinDir: '',
 };
+
+const BUILTIN_SKINS = {
+  octopus: path.join(__dirname, '..', 'assets', 'skins', 'octopus'),
+};
+const SKIN_STATES = ['idle', 'busy', 'thinking', 'stuck', 'offline'];
+const SKIN_OPTIONAL_STATES = ['waiting'];
+const SKIN_EXTS = { '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg' };
+
+function findSkinImage(dir, state) {
+  for (const [ext, mime] of Object.entries(SKIN_EXTS)) {
+    const file = path.join(dir, state + ext);
+    if (fs.existsSync(file)) {
+      return `data:${mime};base64,${fs.readFileSync(file).toString('base64')}`;
+    }
+  }
+  return null;
+}
+
+// Returns { idle, busy, thinking, stuck, offline, waiting } as data URLs,
+// or null for the CSS orb skin / an invalid custom folder.
+function loadSkinImages() {
+  let dir = null;
+  if (config.skin === 'custom' && config.customSkinDir) dir = config.customSkinDir;
+  else if (BUILTIN_SKINS[config.skin]) dir = BUILTIN_SKINS[config.skin];
+  if (!dir || !fs.existsSync(dir)) return null;
+
+  const images = {};
+  for (const state of SKIN_STATES) {
+    const img = findSkinImage(dir, state);
+    if (!img) return null;
+    images[state] = img;
+  }
+  for (const state of SKIN_OPTIONAL_STATES) {
+    images[state] = findSkinImage(dir, state) || images.idle;
+  }
+  return images;
+}
+
+function validateSkinDir(dir) {
+  const missing = SKIN_STATES.filter((s) => !findSkinImage(dir, s));
+  return missing;
+}
+
+function applySkin() {
+  if (mainWindow) {
+    mainWindow.webContents.send('skin', loadSkinImages());
+  }
+}
 
 let mainWindow = null;
 let setupWindow = null;
@@ -97,6 +147,7 @@ function createPetWindow() {
       dashboardUrl: config.dashboardUrl,
       sessionToken: config.sessionToken,
       apiKey: config.apiKey,
+      skinImages: loadSkinImages(),
     });
   });
 
@@ -161,9 +212,58 @@ function createTray() {
 
   tray = new Tray(trayIcon);
   tray.setToolTip('Luna Pet');
+  rebuildTrayMenu();
+}
+
+function setSkin(skin) {
+  config.skin = skin;
+  saveConfig();
+  applySkin();
+  rebuildTrayMenu();
+}
+
+function chooseCustomSkinDir() {
+  const result = dialog.showOpenDialogSync({
+    title: 'Choose Skin Folder',
+    message: 'Pick a folder containing idle / busy / thinking / stuck / offline images (png, gif, webp or jpg). Optional: waiting.',
+    properties: ['openDirectory'],
+  });
+  if (!result || !result[0]) return;
+
+  const dir = result[0];
+  const missing = validateSkinDir(dir);
+  if (missing.length > 0) {
+    dialog.showErrorBox(
+      'Invalid Skin Folder',
+      `Missing images: ${missing.map((s) => s + '.png').join(', ')}\n\nThe folder must contain one image per state, named idle / busy / thinking / stuck / offline (extensions: png, gif, webp, jpg).`
+    );
+    return;
+  }
+
+  config.customSkinDir = dir;
+  setSkin('custom');
+}
+
+function rebuildTrayMenu() {
+  if (!tray) return;
+
+  const skinMenu = [
+    { label: 'Octopus (built-in)', type: 'radio', checked: config.skin === 'octopus', click: () => setSkin('octopus') },
+    { label: 'Orb (classic)', type: 'radio', checked: config.skin === 'orb', click: () => setSkin('orb') },
+  ];
+  if (config.customSkinDir) {
+    skinMenu.push({
+      label: `Custom (${path.basename(config.customSkinDir)})`,
+      type: 'radio',
+      checked: config.skin === 'custom',
+      click: () => setSkin('custom'),
+    });
+  }
+  skinMenu.push({ type: 'separator' });
+  skinMenu.push({ label: 'Choose Custom Folder…', click: () => chooseCustomSkinDir() });
 
   const contextMenu = Menu.buildFromTemplate([
-    { label: 'Luna Pet v0.1.0', enabled: false },
+    { label: 'Luna Pet v0.2.0', enabled: false },
     { type: 'separator' },
     {
       label: 'Show / Hide',
@@ -172,6 +272,7 @@ function createTray() {
         else if (mainWindow) mainWindow.show();
       },
     },
+    { label: 'Skin', submenu: skinMenu },
     {
       label: 'Settings',
       click: () => showSetup(),
