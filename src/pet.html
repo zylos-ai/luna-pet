@@ -384,7 +384,8 @@ async function connectSSE() {
     reconnectTimer = null;
   }
 
-  const url = `${config.dashboardUrl}/api/stream`;
+  const base = (config.dashboardUrl || '').replace(/\/+$/, '');
+  const url = `${base}/api/stream`;
   const headers = {};
   if (config.sessionToken) {
     headers['Authorization'] = `Bearer ${config.sessionToken}`;

@@ -33,7 +33,8 @@ function saveConfig() {
 
 function exchangeApiKey(dashboardUrl, apiKey) {
   return new Promise((resolve, reject) => {
-    const url = new URL('/api/auth/token', dashboardUrl);
+    const base = dashboardUrl.replace(/\/+$/, '');
+    const url = new URL(`${base}/api/auth/token`);
     const transport = url.protocol === 'https:' ? https : http;
     const req = transport.request(url, {
       method: 'POST',
