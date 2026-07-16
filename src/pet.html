@@ -35,85 +35,15 @@ html, body {
   position: relative;
 }
 
-/* Base orb body */
-.orb {
+.skin-img {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 80px;
   height: 80px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #5eead4, #0d9488 60%, #065f53);
-  position: absolute;
-  box-shadow: 0 4px 20px rgba(13, 148, 136, 0.4), inset 0 -4px 8px rgba(0,0,0,0.15);
-  transition: transform 0.3s ease, background 0.5s ease;
-}
-
-/* Eyes */
-.eye {
-  position: absolute;
-  width: 10px;
-  height: 12px;
-  background: #fff;
-  border-radius: 50%;
-  top: 30px;
-}
-.eye::after {
-  content: '';
-  position: absolute;
-  width: 6px;
-  height: 6px;
-  background: #1a1a2e;
-  border-radius: 50%;
-  top: 3px;
-  left: 2px;
-  transition: all 0.2s;
-}
-.eye-left { left: 24px; }
-.eye-right { left: 46px; }
-
-/* Mouth */
-.mouth {
-  position: absolute;
-  width: 12px;
-  height: 6px;
-  border-bottom: 2px solid #1a1a2e;
-  border-radius: 0 0 50% 50%;
-  top: 48px;
-  left: 34px;
-  transition: all 0.3s;
-}
-
-/* Blush */
-.blush {
-  position: absolute;
-  width: 10px;
-  height: 6px;
-  background: rgba(251, 146, 160, 0.5);
-  border-radius: 50%;
-  top: 44px;
-}
-.blush-left { left: 14px; }
-.blush-right { left: 56px; }
-
-/* Antenna / ear thingy */
-.antenna {
-  position: absolute;
-  width: 4px;
-  height: 16px;
-  background: #14b8a6;
-  border-radius: 2px;
-  top: -12px;
-  left: 38px;
-  transform-origin: bottom center;
-}
-.antenna::after {
-  content: '';
-  position: absolute;
-  width: 8px;
-  height: 8px;
-  background: #5eead4;
-  border-radius: 50%;
-  top: -6px;
-  left: -2px;
-  box-shadow: 0 0 6px rgba(94, 234, 212, 0.6);
+  object-fit: contain;
+  -webkit-user-drag: none;
+  transition: opacity 0.3s ease, filter 0.3s ease;
 }
 
 /* Status label */
@@ -136,146 +66,41 @@ html, body {
 
 /* === STATE ANIMATIONS === */
 
-/* IDLE — gentle float */
-.state-idle .orb {
-  animation: float 3s ease-in-out infinite;
-}
-.state-idle .antenna {
-  animation: antenna-sway 2.5s ease-in-out infinite;
-}
+.state-idle .skin-img { animation: float 3s ease-in-out infinite; }
 @keyframes float {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-6px); }
 }
-@keyframes antenna-sway {
-  0%, 100% { transform: rotate(-5deg); }
-  50% { transform: rotate(5deg); }
-}
 
-/* BUSY — energetic bounce + spinning antenna light */
-.state-busy .orb {
-  animation: bounce 0.6s ease-in-out infinite;
-  background: radial-gradient(circle at 35% 35%, #67e8f9, #0891b2 60%, #065053);
-}
-.state-busy .antenna {
-  animation: antenna-fast 0.4s ease-in-out infinite;
-}
-.state-busy .antenna::after {
-  animation: glow-pulse 0.8s ease-in-out infinite;
-  background: #67e8f9;
-}
-.state-busy .eye::after {
-  animation: eye-focus 1s ease-in-out infinite;
-}
+.state-busy .skin-img { animation: bounce 0.6s ease-in-out infinite; }
 @keyframes bounce {
   0%, 100% { transform: translateY(0) scale(1); }
   50% { transform: translateY(-8px) scale(1.02); }
 }
-@keyframes antenna-fast {
-  0%, 100% { transform: rotate(-8deg); }
-  50% { transform: rotate(8deg); }
-}
-@keyframes glow-pulse {
-  0%, 100% { box-shadow: 0 0 6px rgba(103, 232, 249, 0.6); }
-  50% { box-shadow: 0 0 14px rgba(103, 232, 249, 0.9); }
-}
-@keyframes eye-focus {
-  0%, 100% { width: 6px; height: 6px; }
-  50% { width: 5px; height: 7px; }
-}
 
-/* THINKING — slow pulse + half-closed eyes */
-.state-thinking .orb {
-  animation: think-pulse 2s ease-in-out infinite;
-  background: radial-gradient(circle at 35% 35%, #a78bfa, #7c3aed 60%, #4c1d95);
-}
-.state-thinking .eye {
-  height: 8px;
-}
-.state-thinking .eye::after {
-  top: 1px;
-  animation: look-around 3s ease-in-out infinite;
-}
-.state-thinking .antenna::after {
-  background: #a78bfa;
-  animation: glow-slow 2s ease-in-out infinite;
-}
-.state-thinking .mouth {
-  width: 8px;
-  height: 4px;
-  left: 36px;
-}
+.state-thinking .skin-img { animation: think-pulse 2s ease-in-out infinite; }
 @keyframes think-pulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.04); }
 }
-@keyframes look-around {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(2px); }
-  75% { transform: translateX(-2px); }
-}
-@keyframes glow-slow {
-  0%, 100% { box-shadow: 0 0 4px rgba(167, 139, 250, 0.4); }
-  50% { box-shadow: 0 0 12px rgba(167, 139, 250, 0.8); }
-}
 
-/* STUCK — wobble + distressed eyes */
-.state-stuck .orb {
-  animation: wobble 0.5s ease-in-out infinite;
-  background: radial-gradient(circle at 35% 35%, #fca5a5, #dc2626 60%, #7f1d1d);
-}
-.state-stuck .eye::after {
-  background: #dc2626;
-}
-.state-stuck .mouth {
-  border-bottom: none;
-  border-top: 2px solid #1a1a2e;
-  border-radius: 50% 50% 0 0;
-  top: 50px;
-}
-.state-stuck .antenna::after {
-  background: #fca5a5;
-  animation: blink-warn 0.8s step-end infinite;
-}
-.state-stuck .blush {
-  background: rgba(220, 38, 38, 0.3);
-}
+.state-stuck .skin-img { animation: wobble 0.5s ease-in-out infinite; }
 @keyframes wobble {
   0%, 100% { transform: rotate(0deg); }
   25% { transform: rotate(-4deg); }
   75% { transform: rotate(4deg); }
 }
-@keyframes blink-warn {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0.3; }
+
+.state-waiting .skin-img { animation: wait-bounce 1.5s ease-in-out infinite; }
+@keyframes wait-bounce {
+  0%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-4px); }
+  60% { transform: translateY(0); }
 }
 
-/* OFFLINE — dimmed, sleeping */
-.state-offline .orb {
-  background: radial-gradient(circle at 35% 35%, #94a3b8, #64748b 60%, #334155);
-  box-shadow: 0 4px 12px rgba(100, 116, 139, 0.3);
-}
-.state-offline .eye {
-  height: 3px;
-  top: 36px;
-  border-radius: 50%;
-}
-.state-offline .eye::after { display: none; }
-.state-offline .mouth {
-  width: 16px;
-  left: 32px;
-  border-bottom-color: #475569;
-}
-.state-offline .antenna::after {
-  background: #94a3b8;
-  box-shadow: none;
-}
-.state-offline .pet-body {
-  animation: sleep-bob 4s ease-in-out infinite;
-}
-.state-offline .zzz {
-  display: block;
-}
+.state-offline .skin-img { opacity: 0.8; filter: saturate(0.5); }
+.state-offline .pet-body { animation: sleep-bob 4s ease-in-out infinite; }
+.state-offline .zzz { display: block; }
 @keyframes sleep-bob {
   0%, 100% { transform: translateY(0) rotate(0deg); }
   50% { transform: translateY(2px) rotate(-2deg); }
@@ -295,51 +120,6 @@ html, body {
   50% { opacity: 1; transform: translateY(-8px) scale(1); }
   100% { opacity: 0; transform: translateY(-16px) scale(0.8); }
 }
-
-/* WAITING — gentle bounce with question mark antenna */
-.state-waiting .orb {
-  animation: wait-bounce 1.5s ease-in-out infinite;
-  background: radial-gradient(circle at 35% 35%, #fde68a, #f59e0b 60%, #92400e);
-}
-.state-waiting .antenna::after {
-  background: #fde68a;
-  animation: glow-pulse 1.2s ease-in-out infinite;
-}
-.state-waiting .eye::after {
-  animation: blink 3s ease-in-out infinite;
-}
-@keyframes wait-bounce {
-  0%, 100% { transform: translateY(0); }
-  30% { transform: translateY(-4px); }
-  60% { transform: translateY(0); }
-}
-@keyframes blink {
-  0%, 90%, 100% { height: 6px; }
-  95% { height: 1px; }
-}
-
-/* === IMAGE SKIN MODE === */
-.skin-img {
-  display: none;
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 80px;
-  height: 80px;
-  object-fit: contain;
-  -webkit-user-drag: none;
-  transition: opacity 0.3s ease, filter 0.3s ease;
-}
-.image-skin .orb,
-.image-skin .antenna { display: none; }
-.image-skin .skin-img { display: block; }
-
-.image-skin.state-idle .skin-img { animation: float 3s ease-in-out infinite; }
-.image-skin.state-busy .skin-img { animation: bounce 0.6s ease-in-out infinite; }
-.image-skin.state-thinking .skin-img { animation: think-pulse 2s ease-in-out infinite; }
-.image-skin.state-stuck .skin-img { animation: wobble 0.5s ease-in-out infinite; }
-.image-skin.state-waiting .skin-img { animation: wait-bounce 1.5s ease-in-out infinite; }
-.image-skin.state-offline .skin-img { opacity: 0.8; filter: saturate(0.5); }
 
 /* Context gauge ring */
 .context-ring {
@@ -371,14 +151,6 @@ html, body {
   <div class="pet state-idle" id="pet">
     <div class="pet-body">
       <div class="context-ring"></div>
-      <div class="orb">
-        <div class="eye eye-left"></div>
-        <div class="eye eye-right"></div>
-        <div class="blush blush-left"></div>
-        <div class="blush blush-right"></div>
-        <div class="mouth"></div>
-      </div>
-      <div class="antenna"></div>
       <img class="skin-img" id="skin-img" alt="">
       <div class="zzz">💤</div>
     </div>
@@ -406,21 +178,15 @@ ipcRenderer.on('config', (_, cfg) => {
 ipcRenderer.on('skin', (_, images) => {
   skinImages = images || null;
   currentImgState = null;
-  if (!skinImages) {
-    document.getElementById('pet').classList.remove('image-skin');
-  }
   applySkinState(currentStateKey);
 });
 
 function applySkinState(stateKey) {
   currentStateKey = stateKey;
   if (!skinImages || !skinImages[stateKey]) return;
-  const pet = document.getElementById('pet');
-  const img = document.getElementById('skin-img');
-  pet.classList.add('image-skin');
   if (currentImgState !== stateKey) {
     currentImgState = stateKey;
-    img.src = skinImages[stateKey];
+    document.getElementById('skin-img').src = skinImages[stateKey];
   }
 }
 
@@ -498,7 +264,6 @@ async function connectSSE() {
 }
 
 async function refreshToken() {
-  const { ipcRenderer } = require('electron');
   const result = await ipcRenderer.invoke('save-config', {
     dashboardUrl: config.dashboardUrl,
     apiKey: config.apiKey,

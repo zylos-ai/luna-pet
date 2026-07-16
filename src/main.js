@@ -33,14 +33,10 @@ function findSkinImage(dir, state) {
   return null;
 }
 
-// Returns { idle, busy, thinking, stuck, offline, waiting } as data URLs,
-// or null for the CSS orb skin / an invalid custom folder.
-function loadSkinImages() {
-  let dir = null;
-  if (config.skin === 'custom' && config.customSkinDir) dir = config.customSkinDir;
-  else if (BUILTIN_SKINS[config.skin]) dir = BUILTIN_SKINS[config.skin];
+// Returns { idle, busy, thinking, stuck, offline, waiting } as data URLs.
+// Falls back to the built-in octopus skin if the selected folder is invalid.
+function loadSkinImagesFrom(dir) {
   if (!dir || !fs.existsSync(dir)) return null;
-
   const images = {};
   for (const state of SKIN_STATES) {
     const img = findSkinImage(dir, state);
@@ -51,6 +47,13 @@ function loadSkinImages() {
     images[state] = findSkinImage(dir, state) || images.idle;
   }
   return images;
+}
+
+function loadSkinImages() {
+  let dir = BUILTIN_SKINS.octopus;
+  if (config.skin === 'custom' && config.customSkinDir) dir = config.customSkinDir;
+  else if (BUILTIN_SKINS[config.skin]) dir = BUILTIN_SKINS[config.skin];
+  return loadSkinImagesFrom(dir) || loadSkinImagesFrom(BUILTIN_SKINS.octopus);
 }
 
 function validateSkinDir(dir) {
@@ -75,6 +78,7 @@ function loadConfig() {
       Object.assign(config, JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8')));
     }
   } catch {}
+  if (!BUILTIN_SKINS[config.skin] && config.skin !== 'custom') config.skin = 'octopus';
 }
 
 function saveConfig() {
@@ -249,7 +253,6 @@ function rebuildTrayMenu() {
 
   const skinMenu = [
     { label: 'Octopus (built-in)', type: 'radio', checked: config.skin === 'octopus', click: () => setSkin('octopus') },
-    { label: 'Orb (classic)', type: 'radio', checked: config.skin === 'orb', click: () => setSkin('orb') },
   ];
   if (config.customSkinDir) {
     skinMenu.push({
@@ -263,7 +266,7 @@ function rebuildTrayMenu() {
   skinMenu.push({ label: 'Choose Custom Folder…', click: () => chooseCustomSkinDir() });
 
   const contextMenu = Menu.buildFromTemplate([
-    { label: 'Luna Pet v0.2.0', enabled: false },
+    { label: 'Luna Pet v0.3.0', enabled: false },
     { type: 'separator' },
     {
       label: 'Show / Hide',
