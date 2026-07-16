@@ -266,7 +266,7 @@ function rebuildTrayMenu() {
   skinMenu.push({ label: 'Choose Custom Folder…', click: () => chooseCustomSkinDir() });
 
   const contextMenu = Menu.buildFromTemplate([
-    { label: 'Luna Pet v0.3.0', enabled: false },
+    { label: 'Luna Pet v0.3.1', enabled: false },
     { type: 'separator' },
     {
       label: 'Show / Hide',
