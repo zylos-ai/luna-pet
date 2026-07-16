@@ -116,6 +116,14 @@ check('context passthrough', mapped.contextPct === 65);
 check('bubble = last reply even while busy', mapped.bubble === '好的，我开始处理这个任务。');
 check('subCount from active_subagents', mapped.subCount === 2 && mapped.hasSubs === true);
 
+// markdown markers are stripped from the bubble (speech, not a document)
+api.handleSSEEvent('state_change', JSON.stringify({
+  state: 'BUSY', running_tools: [{ tool_name: 'Bash' }], agent: { name: 'Luna' },
+  last_message: { text: '**CI 绿了**，`v0.5.2` 已发布：\n- 气泡改版\n## 完成' },
+}));
+mapped = api.mapAgentState('Luna');
+check('bubble strips markdown markers', mapped.bubble === 'CI 绿了，v0.5.2 已发布：\n· 气泡改版\n完成');
+
 // thinking: BUSY with no tools — reason must NOT be surfaced (its (Ns) is turn age)
 api.handleSSEEvent('state_change', JSON.stringify({
   state: 'BUSY', running_tools: [], reason: 'Thinking (70s)', agent: { name: 'Luna' },

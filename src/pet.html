@@ -89,12 +89,11 @@ html, body {
 }
 .timer.on { display: inline-block; }
 
-/* speech bubble: shows the agent's last reply, tail points up at the pet */
+/* speech bubble: shows the agent's last reply, tail points up at the pet.
+   Long text clamps to 3 lines with an ellipsis; hovering opens the overlay. */
 .label-box {
   position: relative;
   max-width: 164px;
-  max-height: 43px;
-  overflow: hidden;
   background: rgba(15,23,42,0.72);
   border-radius: 9px;
   padding: 3px 8px;
@@ -119,8 +118,35 @@ html, body {
   text-align: center;
   word-break: break-word;
   white-space: pre-wrap;
-  will-change: transform;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
 }
+
+/* full-text overlay: anchored at the bottom, grows upward over the pet */
+.label-full {
+  display: none;
+  position: fixed;
+  left: 5px;
+  right: 5px;
+  bottom: 4px;
+  max-height: 210px;
+  overflow-y: auto;
+  background: rgba(15,23,42,0.94);
+  border-radius: 9px;
+  padding: 5px 8px;
+  z-index: 10;
+  font-size: 10px;
+  line-height: 1.35;
+  color: rgba(255,255,255,0.95);
+  word-break: break-word;
+  white-space: pre-wrap;
+  -webkit-app-region: no-drag;
+}
+.label-full.on { display: block; }
+.label-full::-webkit-scrollbar { width: 4px; }
+.label-full::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.25); border-radius: 2px; }
 
 /* === STATE ANIMATIONS === */
 
@@ -247,6 +273,7 @@ html, body {
     </div>
   </div>
 </div>
+<div class="label-full" id="label-full"></div>
 
 <script>
 const { ipcRenderer } = require('electron');
@@ -259,7 +286,6 @@ let currentAnimState = null;
 let frameTimer = null;
 let timerBase = null;       // epoch ms the elapsed timer counts from
 let timerVisible = false;
-let labelAnim = null;
 let lastLabelText = null;
 
 const TIMED_STATES = new Set(['busy', 'thinking', 'waiting', 'stuck']);
@@ -349,37 +375,36 @@ function renderTimer() {
 }
 setInterval(renderTimer, 1000);
 
-// ---- label with vertical marquee for overflow ----
+// ---- label: 3-line clamp, hover opens the full-text overlay ----
 
 function setLabel(text) {
   if (text === lastLabelText) return;
   lastLabelText = text;
   const box = document.getElementById('label-box');
   const inner = document.getElementById('label');
-  if (labelAnim) { labelAnim.cancel(); labelAnim = null; }
-  inner.style.transform = '';
+  const full = document.getElementById('label-full');
   inner.textContent = text;
+  full.textContent = text;
   box.classList.toggle('empty', !text);
-
-  requestAnimationFrame(() => {
-    const overflow = inner.scrollHeight - box.clientHeight;
-    if (overflow > 4) {
-      labelAnim = inner.animate(
-        [
-          { transform: 'translateY(0)' },
-          { transform: `translateY(${-overflow}px)` },
-        ],
-        {
-          duration: Math.max(overflow * 90, 2500),
-          delay: 1500,
-          direction: 'alternate',
-          iterations: Infinity,
-          easing: 'linear',
-        }
-      );
-    }
-  });
+  if (!text) full.classList.remove('on');
 }
+
+const labelBoxEl = document.getElementById('label-box');
+const labelFullEl = document.getElementById('label-full');
+labelBoxEl.addEventListener('mouseenter', () => {
+  const inner = document.getElementById('label');
+  // only expand when the clamp actually cut something off
+  if (inner.scrollHeight > inner.clientHeight + 2) {
+    labelFullEl.classList.add('on');
+  }
+});
+// the overlay appears under the cursor, so it owns the hover from here on
+labelFullEl.addEventListener('mouseleave', () => labelFullEl.classList.remove('on'));
+labelBoxEl.addEventListener('mouseleave', (e) => {
+  if (e.relatedTarget !== labelFullEl && !labelFullEl.contains(e.relatedTarget)) {
+    labelFullEl.classList.remove('on');
+  }
+});
 
 // self reports a real count; remote fleet records only say "has helpers"
 function setSubBadge(subCount, hasSubs) {

@@ -8,7 +8,7 @@ const http = require('http');
 // would leave WebAudio suspended forever under Chromium's autoplay policy.
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
-const VERSION = 'v0.5.1';
+const VERSION = 'v0.5.2';
 const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
 const DEFAULT_PET = { visible: false, skin: 'octopus', customSkinDir: '', x: -1, y: -1 };
 const DEFAULT_CONFIG = {
@@ -369,6 +369,15 @@ function petTint(name) {
 
 // ---------- state mapping ----------
 
+// The bubble is speech, not a document: drop markdown markers that read as
+// noise in plain text (bold/italic markers, backticks, heading/list prefixes).
+function stripMarkdown(text) {
+  return String(text)
+    .replace(/\*\*|__|`+/g, '')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^[-*]\s+/gm, '· ');
+}
+
 // `label` is workbench-facing activity text; the pet itself shows `bubble` —
 // the agent's last spoken reply — so tool internals never reach the pet.
 function mapAgentState(name) {
@@ -449,7 +458,7 @@ function mapAgentState(name) {
   return {
     stateKey,
     label: String(label).slice(0, 320),
-    bubble: String(bubble).slice(0, 320),
+    bubble: stripMarkdown(bubble).slice(0, 320),
     contextPct,
     toolStartedAt,
     subCount,
